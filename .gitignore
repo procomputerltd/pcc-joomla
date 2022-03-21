@@ -1,11 +1,3 @@
-/.htaccess
-/bin/*
-/cache/*
-/cli/*
-/htaccess.txt
-/index.php
-/joomla.xml
-/LICENSE.txt
-/README.txt
-/robots.txt.dist
-/web.config.txt
+/vendor
+composer.phar
+composer.lock
