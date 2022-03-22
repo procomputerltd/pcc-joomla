@@ -1,21 +1,21 @@
 {
-"name": "procomputer/pcc-joomla",
-"description": "Pro Computer's Joomla! Tools for PHP.",
-"keywords": ["template", "composer", "package"],
-"license": "MIT",
-"authors": [
-    {
-        "name": "James R. Steel",
-        "email": "jim-steel@pccglobal.com"
+    "name": "procomputer/pcc-joomla",
+    "description": "Pro Computer's Joomla! Tools for PHP.",
+    "keywords": ["template", "composer", "package"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "James R. Steel",
+            "email": "jim-steel@pccglobal.com"
+        }
+    ],
+    "type": "library",
+    "require": {
+        "php": ">=7.4.27"
+    },
+    "autoload": {
+        "psr-4": {
+            "Procomputer\\Joomla\\": "src/"
+        }
     }
-],
-"type": "library",
-"require": {
-    "php": ">=7.4.27"
-,
-"autoload": {
-    "psr-4": {
-        "Procomputer\\Joomla\\": "src/"
-    }
-}
 }
