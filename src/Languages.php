@@ -102,8 +102,9 @@ class Languages {
             return false;
         }
                 
-        $this->_findUnusedLanguageConstants($languageFiles, $codeFiles, $extension);
-        return $languageFiles;
+        $unusedConstants = $this->_findUnusedLanguageConstants($languageFiles, $codeFiles, $extension);
+        $orphanedConstants = $this->findOrphanedLanguageConstants($extensionName);
+        return ['orphan' => $orphanedConstants, 'unused' => $unusedConstants];
     }
     
     /**
@@ -111,7 +112,7 @@ class Languages {
      *
      * @param string $extensionName The name of the Joomla extension for which to find language constants.
      *
-     * @return array
+     * @return \ArrayObject|boolean
      */
     public function findOrphanedLanguageConstants($extensionName) {
         // Get the component extension in the Joomla! installation and parse the XML manifest file.
@@ -138,15 +139,14 @@ class Languages {
             return false;
         }
                 
-        $orphanedConstants = $this->_findOrphanedLanguageConstants($languageFiles, $codeFiles, $extension);
-        return $orphanedConstants;
+        return $this->_findOrphanedLanguageConstants($languageFiles, $codeFiles, $extension);
     }
     
     /**
      * 
      * @param type $languageFiles
      * @param type $codeFiles
-     * @return boolean
+     * @return \ArrayObject|boolean
      */
     protected function _findOrphanedLanguageConstants(\ArrayObject $languageFiles, \ArrayObject $codeFiles, $extension) {
         $extensionName = strtoupper(($extension instanceof Extension) ? $extension->element : $extension);
