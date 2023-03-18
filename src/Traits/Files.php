@@ -213,7 +213,7 @@ trait Files {
     }
     
     /**
-     * Joins separate parts into a directory path.
+     * Joins separate parts into a OS normalized directory path.
      * @param mixed $path Initial path part. Specify additional arguments for additional path parts.
      * @return string
      */
@@ -234,4 +234,13 @@ trait Files {
         }
         return $newPath;
     }
+    
+    /**
+     * Determines that the operating system is a Windos product.
+     * @return boolean
+     */
+    protected function _isWinOs() {
+        return (false !== strpos(strtolower(PHP_OS), "win"));
+    }
+    
 }
