@@ -30,6 +30,12 @@ class Installations {
     use Traits\Files;
     
     /**
+     * Folder under which local Joomla! installs exist.
+     * @var string
+     */
+    protected $_webRoot;
+    
+    /**
      * List of Joomla installations.
      * @var ArrayObject
      */
@@ -48,10 +54,19 @@ class Installations {
     protected $_dbAdapter = null;
     
     /**
-     * 
-     * @param Procomputer\Joomla\Drivers\Files\FileDriver $fileDriver
+     * Constructor
+     * @param string     $webRoot    Root directory under which Joomla install exist.
+     * @param FileDriver $fileDriver The file driver object.
+     * @param mixed      $dbAdapter  (optional) DB adapter.
+     * @return boolean
      */
-    public function __construct(FileDriver $fileDriver, $dbAdapter = null) {
+    public function __construct(string $webRoot, FileDriver $fileDriver, $dbAdapter = null) {
+        $root = trim($webRoot, " \n\r\t\v\x00;");
+        if(! strlen($root)) {
+            $msg = "Missing web root parameter";
+            throw new \RuntimeException($msg);
+        }
+        $this->_webRoot = preg_split('/[\\n\\r;]+/', $root);
         $this->_fileDriver = $fileDriver;
         $this->_dbAdapter = $dbAdapter;
     }
@@ -63,7 +78,7 @@ class Installations {
      * 
      * @return ArrayObject
      */
-    public function getInstallations() {
+    public function getInstallations() : mixed {
         if(null === $this->_installations) {
             $installs = $this->findInstallations();
             if(false === $installs) {
@@ -81,7 +96,7 @@ class Installations {
      * 
      * @return array
      */
-    public function getNameList($sort = null) {
+    public function getNameList(string $sort = null) {
         $installs = $this->getInstallations();
         if(false === $installs) {
             return false;
@@ -99,10 +114,11 @@ class Installations {
     
     /**
      * Return Joomla! installation for the specified Joomla! installation name.
-     * 
+     * @param string $idOrName
      * @return Installation
+     * @return boolean|\Procomputer\Joomla\Installation
      */
-    public function getInstallation($idOrName) {
+    public function getInstallation(string $idOrName) : mixed {
         $installs = $this->getInstallations();
         if(false === $installs) {
             return false;
@@ -123,46 +139,44 @@ class Installations {
      * 
      * @return ArrayObject|boolean
      */
-    public function findInstallations() {
+    public function findInstallations() : mixed {
         $driver = $this->_fileDriver;
-        $webRoot = $driver->getWebServerRootDir();
-        if(false === $webRoot) {
-            $this->saveError($driver->getErrors());
-            return false;
-        }
-        $details = $driver->getDirectoryDetails($webRoot);
-        if(false === $details) {
-            return false;
+        $items = [];
+        foreach($this->_webRoot as $dir) {
+            $details = $driver->getDirectoryDetails($dir);
+            if(false === $details) {
+                $this->saveError($driver->getErrors());
+                return false;
+            }
+            $items[$dir] = $details;
         }
         $folders = [];
-        foreach($details as $info) {
-            /* $info elements:
-                [chmod] => (string) lrwxrwxrwx
-                [num] => (string) 1
-                [owner] => (string) 787
-                [group] => (string) u288-62k0k
-                [size] => (string) 13
-                [month] => (string) Jan
-                [day] => (string) 26
-                [time] => (string) 2021
-                [name] => (string) chelanclassic.com -> pccglobal.com
-                [type] => (string) link
-                [path] => (string) chelanclassic.com -> pccglobal.com
-            */
-            $type = $info['type'] ?? null;
-            if('dir' !== $type) {
-                continue;
+        foreach($items as $dir => $details) {
+            foreach($details as $info) {
+                /* Directory details (all string type):
+                    [chmod] => lrwxrwxrwx
+                    [num]   => 1
+                    [owner] => 787
+                    [group] => u288-62k0k
+                    [size]  => 13
+                    [month] => Jan
+                    [day]   => 26
+                    [time]  => 2021
+                    [name]  => chelanclassic.com -> pccglobal.com
+                    [type]  => link
+                    [path]  => chelanclassic.com -> pccglobal.com
+                */
+                // Include only directories.
+                $type = $info['type'] ?? null;
+                if('dir' !== $type) {
+                    continue;
+                }
+                $folders[] = $this->joinOsPath($dir, $info['path']);
             }
-            $folders[] = $info['path'];
         }
         $hashes = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         $installs = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
-        foreach($folders as $folder) {
-            $fullPath = $this->joinPath($webRoot, $folder);
-//            $details = $driver->getDirectoryDetails($fullPath);
-//            if(false === $details) {
-//                continue;
-//            }
+        foreach($folders as $fullPath) {
             $config = $this->_findConfiguration($fullPath, $hashes);
             if(false === $config) {
                 return false;
@@ -170,15 +184,19 @@ class Installations {
             if(null === $config) {
                 continue;
             }
+            
             $names = [];
             if(! empty($config->sitename)) {
                 $names[] = $config->sitename;
             }
-            $names[] = pathinfo($config->__path__, PATHINFO_FILENAME);
+            $version = $this->_getJoomlaVersion($fullPath);
+            if($version) {
+                $names[] = 'v' . $version;
+            }
             if(count($names) > 1) {
-                $names[1] = '(' . $names[1] . ')';
+                $names[] = 'source folder: ' . pathinfo($config->__path__, PATHINFO_FILENAME);
             } 
-            $name = implode(' ', $names);
+            $name = implode(' - ', $names);
             if(! $installs->offsetExists($name)) {
                 $obj = new Installation($name, $config, $config->__path__, $this->_fileDriver, $this->_dbAdapter);
                 $installs->offsetSet($name, $obj);
@@ -203,8 +221,11 @@ class Installations {
         if(! count($folders)) {
             return null;
         }
-        $keys = array_keys($folders);
-        $hash = md5(implode('_', $keys));
+        $f = $folder;
+        if($this->_isWinOs()) {
+            $f = strtolower($f);
+        }
+        $hash = md5($f);
         if($hashes->offsetExists($hash)) {
             return null;
         }
@@ -300,6 +321,40 @@ class Installations {
         }
         return $config;
     }   
+
+    /**
+     * 
+     * @param string $rootPath
+     */
+    protected function _getJoomlaVersion(string $rootPath) {
+        // F:\Business\Customers\NorthWing\public_html\libraries\src\Version.php        
+        $path = $rootPath . '\libraries\src\Version.php';
+        if(! file_exists($path)) {
+            return false;
+        }
+        $contents = @file_get_contents($path);
+        if(! is_string($contents) || ! strlen($contents = trim($contents))) { 
+            return false;
+        }
+        $labels = ['MAJOR', 'MINOR', 'PATCH'];
+        $ver = array_fill(0, count($labels), 0);
+        $pattern = '/const[ \\t]+(' . implode('|', $labels) . ')_VERSION[ \\t]*=[ \\t]*([0-9\\.]+)+/i';
+        $num = preg_match_all($pattern, $contents, $m, PREG_SET_ORDER);
+        if(false === $num || $num < 2) {
+            return false;
+        }
+        for($i = 0; $i < $num; $i++) {
+            $num = $m[$i][2];
+            if(is_numeric($num)) {
+                $name = strtoupper($m[$i][1]);
+                $index = array_search($name, $labels);
+                if(false !== $index) {
+                    $ver[$index] = $num;
+                }
+            }
+        }
+        return implode('.', $ver);
+    }
     
     /**
      * Returns the list of extension names for this installation.
