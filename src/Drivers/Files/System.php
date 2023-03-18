@@ -73,6 +73,11 @@ class System extends FileDriver {
      * @throws Throwable
      */
     public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = 0) {
+        if(! file_exists($directory) || ! is_dir($directory)) {
+            $msg = "Can't get directory details; parameter is not a directory: {$directory}";
+            $this->saveError($msg);
+            return false;
+        }
         /* $info elements:
             [chmod] => (string) lrwxrwxrwx
             [num] => (string) 1
@@ -137,21 +142,6 @@ class System extends FileDriver {
         return (array)$storage;
     }
     
-    /**
-     * 
-     * @return string
-     */
-    public function getWebServerRootDir() :string {
-        // C:/inetpub/joomlapcc
-        $path = $this->fixSlashes($this->getDocumentRoot());
-        $pattern = '~^([a-z]\\:\\\\inetpub)\\\\~i';
-        if(preg_match($pattern, $path, $m)) {
-            // Find Joomla installs under inetpub directory
-            $path = $m[1];
-        }
-        return $path;
-    }
-
     /**
      * Returns true when the path exists.
      * @param string $path

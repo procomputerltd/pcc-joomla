@@ -123,14 +123,6 @@ class Remote extends FileDriver {
     }
     
     /**
-     * 
-     * @return string
-     */
-    public function getWebServerRootDir() {
-        return $this->getCurrentDir();
-    }
-
-    /**
      * Returns the ID of this file driver driver.
      * 
      * @return string
