@@ -511,7 +511,7 @@ class System extends FileDriver {
             $var = Types::getVartype($source);
             throw new RuntimeException("File not found: $var");
         }
-        set_error_handler(
+        $errorHandler = set_error_handler(
             static function(int $errno, string $errstr) use ($source): void {
                 $this->lastFileDriverError = $msg;
                 throw new RuntimeException("Cannot get information for file $source: $errstr", $errno);
@@ -559,7 +559,7 @@ class System extends FileDriver {
         } catch (Throwable $exception) {
             throw new RuntimeException($exception);
         } finally {
-            restore_error_handler();
+            set_error_handler($errorHandler);
         }
     }
     
