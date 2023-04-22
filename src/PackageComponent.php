@@ -24,33 +24,34 @@ class PackageComponent extends PackageCommon {
      */
     public function import(array $options = null) {
         $this->setPackageOptions($options);
+        $this->manifest = $this->_extension->getManifest(); 
+        $this->manifestFile = $this->manifest->getManifestFile(); 
+        
         $manifestElements = [
-            'name' => true,
-            'creationDate' => true,
-            'author' => true,
-            'authorEmail' => true,
-            'authorUrl' => true,
-            'copyright' => true,
-            'license' => true,
-            'version' => true,
-            'description' => true,
-            'files' => true,
-            'administration' => true,
-            'media' => true,
-            'languages' => true,
+            'name',
+            'creationDate',
+            'author',
+            'authorEmail',
+            'authorUrl',
+            'copyright',
+            'license',
+            'version',
+            'description',
+            'files',
+            'administration',
+            'media',
+            'languages',
             // Optional:
-            'scriptfile' => false,
-            'install' => false,
-            'uninstall' => false,
-            'update' => false,
+            // scriptfile
+            // install
+            // uninstall
+            // update
         ];
-        $missing = $this->checkRequirements($manifestElements);
+        $missing = $this->checkRequiredElementsExist($manifestElements);
         if(true !== $missing) {
             $this->_packageMessage("required element(s) missing: " . implode(", ", $missing));
             return false;
         }
-        $this->manifest = $this->_extension->getManifest(); 
-        $this->manifestFile = $this->manifest->getManifestFile(); 
         
         $filename = pathinfo($this->manifestFile, PATHINFO_FILENAME);
         $name = $this->_removeNamePrefix($filename);
@@ -69,18 +70,27 @@ class PackageComponent extends PackageCommon {
         }
         
         $sections = [
-            'files' => false,           //_processSectionFiles
-            'administration' => false,  //_processSectionAdministration
-            'languages' => true,       //_processSectionLanguages
-            'scriptfile' => true,      //_processSectionScriptfile
-            'media' => true             //_processSectionMedia
+            'files' => true,           //_processSectionFiles
+            'administration' => true,  //_processSectionAdministration
+            'languages' => false,       //_processSectionLanguages
+            'scriptfile' => false,      //_processSectionScriptfile
+            'media' => false             //_processSectionMedia
             ];
         $progress = $this->getProgress();
         $driver = $this->_fileDriver;
         /** @var \Procomputer\Joomla\Drivers\Files\Remote $driver */
-        foreach($sections as $section => $isOptional) {
+        foreach($sections as $section => $required) {
+            $node = $this->manifest->getNode($section);
+            if(null === $node) {
+                $msg = "WARNING: required manifest XML '{$section}' is empty";
+                $this->saveError($msg);
+                if($required) {
+                    return false;
+                }
+                continue;
+            }
             $method = '_processSection' . ucfirst($section);
-            if(false === $this->$method($this->manifest, $isOptional)) {
+            if(false === $this->$method($node, 'admin')) {
                 return false;
             }
             $seconds = $progress->getInterval(true, $method);
@@ -167,56 +177,38 @@ class PackageComponent extends PackageCommon {
         </files>
     */        
     /**
-     * <administration>
+     * @param \stdClass $node
      */
-    protected function _processSectionAdministration(Manifest $manifest, $isOptional = false) {
-        $sectionName = 'administration';
-        $section = $manifest->getProperty($sectionName);
-        if(null === $section) {
-            if($isOptional) {
-                return true;
-            }
-            $this->_packageMessage("'{$sectionName}' section is missing");
-            return false;
-        }
-        $files = $section->files ?? null;
+    protected function _processSectionAdministration($node) {
+        $tag = 'administration';
+        $files = $node->files ?? null;
         if(null === $files) {
-            $this->_packageMessage("'{$sectionName}' section is empty");
+            $this->_packageMessage("WARNING: required {$tag} 'files' section is missing.");
             return false;    
         }
-        if(false === $this->_processFiles($files)) {
+        if(false === $this->_processFiles($files, $tag)) {
             return false;
         }
         
-        $languages = $section->languages ?? null;
+        $languages = $node->languages ?? null;
         if(null === $languages) {
             // 'pccoptionselector.xml' manifest file error: 'files' is missing";
             // In XML package file 'mod_pccevent.xml': 'files' section is missing")
-            $this->_packageMessage("WARNING: 'languages' section is missing from the admin section");
+            $this->_packageMessage("WARNING: {$tag} 'languages' section is missing.");
         }
-        elseif(! $this->_processSectionLanguages($languages, true)) {
+        elseif(! $this->_processSectionLanguages($languages, 'admin')) {
             return false;
         }
         return true;
     }
 
     /**
-     * <scriptfile>script.php</scriptfile>
+     * @param string $filename
      */
-    protected function _processSectionScriptfile(Manifest $manifest, $isOptional = false) {
-        $sectionName = 'scriptfile';
-        $data =  $manifest->getData();
-        $scriptFile = $data->{$sectionName} ?? null;
-        if(! is_string($scriptFile) || Types::isBlank($scriptFile)) {
-            if($isOptional) {
-                return true;
-            }
-            $this->_packageMessage("the manifest file is missing the '{$sectionName}' section");
-            return false;
-        }
+    protected function _processSectionScriptfile($filename) {
         // C:\inetpub\joomlapcc\administrator\components\com_pccevents\script.php
-        $sourceFile = $this->joinPath(dirname($this->manifestFile), $scriptFile);
-        $this->addFile($sourceFile, $scriptFile);
+        $sourceFile = $this->joinPath(dirname($this->manifestFile), $filename);
+        $this->addFile($sourceFile, $filename);
         return true;
     }
 }

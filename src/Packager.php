@@ -78,13 +78,13 @@ class Packager {
         $tempFile = $this->getArchiveTempFile();
         if(empty($tempFile)) {
             $classFunction = __CLASS__ . '::assemble()' ;
-            $this->_packageError("Cannot save archive. No archive temporary was created. Are you sure you had a successful call to {$classFunction}?");
+            $this->_packageMessage("Cannot save archive. No archive temporary was created. Are you sure you had a successful call to {$classFunction}?");
             return false;
         }
         if(! file_exists($tempFile) || ! ($isFile = is_file($tempFile))) {
             $msg = isset($isFile) ? "is not a file" : "has disappeared";
             $var = Types::getVartype($tempFile);
-            $this->_packageError("Cannot save archive. The archive temporary file {$msg}: \n{$var}");
+            $this->_packageMessage("Cannot save archive. The archive temporary file {$msg}: \n{$var}");
             return false;
         }
         $lcOptions = (null === $options) ? [] : array_change_key_case((array)$options);
@@ -94,16 +94,16 @@ class Packager {
         if(file_exists($destFile)) {
             $renameExisting = (isset($lcOptions['rename']) && $lcOptions['rename']);
             if(! $renameExisting) {
-                $this->_packageError("Cannot save archive: the archive file exists and 'rename' option is FALSE: \n{$destFile}");
+                $this->_packageMessage("Cannot save archive: the archive file exists and 'rename' option is FALSE: \n{$destFile}");
                 return false;
             }
             $backupFile = $this->_getBackupFilename($destFile);
             if(false === $backupFile) {
-                $this->_packageError("Cannot save archive: cannot create backup filename for existing file: \n{$destFile}");
+                $this->_packageMessage("Cannot save archive: cannot create backup filename for existing file: \n{$destFile}");
                 return false;
             }
             if(! $this->callFuncAndSavePhpError(function()use($destFile, $backupFile){return rename($destFile, $backupFile);})) {
-                $this->_packageError("Cannot save archive: cannot create backup file for existing file: \n{$destFile}");
+                $this->_packageMessage("Cannot save archive: cannot create backup file for existing file: \n{$destFile}");
                 return false;
             }
             else {
@@ -118,7 +118,7 @@ class Packager {
             $this->saveMessage("The archive file '{$base}' is successfully created in directory: \n{$dir}");
             return $destFile;
         }
-        $this->_packageError("Cannot save archive: cannot move temporary file to the destination file: \n{$destFile}");
+        $this->_packageMessage("Cannot save archive: cannot move temporary file to the destination file: \n{$destFile}");
         return false;
     }
 
@@ -162,23 +162,23 @@ class Packager {
             $this->_archiveFile = null;
             return true;
         }
-        $this->_packageError("Cannot delete archive temporary file: \n{$tempFile}");
+        $this->_packageMessage("Cannot delete archive temporary file: \n{$tempFile}");
         return false;
     }
     
     /**
      * Saves a package assembly error.
      * @param string $msg The message to store.
-     * @return Packager
+     * @return PackageCommon
      */
-    protected function _packageError($msg, $errorSource = null) {
-        $source = (null === $errorSource) ? null : trim((string)$errorSource);
+    protected function _packageMessage($msg, bool $isError = true, string $errorSource = null) {
+        $source = (null === $errorSource) ? null : trim($errorSource);
         if(empty($source)) {
             $source = empty($this->_extensionName) ? null : $this->_extensionName;
         }
         $source = empty($source) ? '' : " '($source)'";
-        $this->saveError("In XML package manifest{$source}: {$msg}");
+        $msg = "In XML package manifest{$source}: {$msg}";
+        $isError ? $this->saveError($msg) : $this->saveMessage($msg);
         return $this;
     }
-    
 }

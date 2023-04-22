@@ -18,37 +18,38 @@ class PackageModule extends PackageCommon {
      */
     public function import(array $options = null) {
         $this->_packageOptions = $options;
-        $manifestElements = [
-            'name' => true,
-            'author' => true,
-            'creationDate' => true,
-            'copyright' => true,
-            'license' => true,
-            'authorEmail' => true,
-            'authorUrl' => true,
-            'version' => true,
-            'description' => true,
-            'files' => true,
-            'install' => false,
-            'uninstall' => false,
-            'update' => false,
-            // Optional
-            //   languages
-            //   media
-        ];
-        $missing = $this->checkRequirements($manifestElements);
-        if(true !== $missing) {
-            $this->_packageError("required element(s) missing: " . implode(", ", $missing));
-            return false;
-        }
         $this->manifest = $this->_extension->getManifest(); 
         $this->manifestFile = $this->manifest->getManifestFile(); 
+        
+        $manifestElements = [
+            'files',
+            'name',
+            'author',
+            'creationDate',
+            'copyright',
+            'license',
+            'authorEmail',
+            'authorUrl',
+            'version',
+            'description',
+            // == Optional:
+            // install
+            // uninstall
+            // update
+            // languages
+            // media
+        ];
+        $missing = $this->checkRequiredElementsExist($manifestElements);
+        if(true !== $missing) {
+            $this->_packageMessage("required element(s) missing: " . implode(", ", $missing));
+            return false;
+        }
         
         $filename = pathinfo($this->manifestFile, PATHINFO_FILENAME);
         $name = $this->_removeNamePrefix($filename);
         if(empty($name)) {
             $var = Types::getVartype($filename);
-            $this->_packageError("the module name cannot be interpreted from the file name '{$var}'");
+            $this->_packageMessage("the module name cannot be interpreted from the file name '{$var}'");
             return false;
         }
         $this->_extensionName = $this->_addNamePrefix($name);
@@ -60,15 +61,25 @@ class PackageModule extends PackageCommon {
             return false;
         }
         
-        $driver = $this->_fileDriver;
+        $driver = $this->_fileDriver; // The local or remote file storage.
+        // The manifest sections to scan for files to copy to the archive.
         $sections = [
-            'files' => false,       // _processFiles
-            'languages' => false,   // _processLanguages
-            'media' => true         // _processMedia
+            'files' => true,       // _processSectionFiles
+            'languages' => true,   // _processSectionLanguages
+            'media' => false       // _processSectionMedia
             ];
-        foreach($sections as $section => $isOptional) {
-            $method = '_processSection' . ucfirst($section);
-            if(false === $this->$method($this->manifest, $isOptional)) {
+        foreach($sections as $tag => $required) {
+            $node = $this->manifest->getProperty($tag);
+            if(null === $node) {
+                $msg = "required manifest XML '{$tag}' data is empty";
+                $this->_packageMessage($msg, true);
+                if($required) {
+                    return false;
+                }
+                continue;
+            }
+            $method = '_processSection' . ucfirst($tag);
+            if(false === $this->$method($node, 'site')) {
                 return false;
             }
             $progress = $this->getProgress();

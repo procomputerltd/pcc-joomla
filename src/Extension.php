@@ -15,15 +15,12 @@
 
 namespace Procomputer\Joomla;
 
-use Procomputer\Joomla\Manifest;
-
 /**
  * Describes a Joomla! Extension and manifest whos source is an XML file normally
  * stored in the Joomla! admin folder "administrator/components/com_extension_name"
  */
 class Extension  {
     
-    use Traits\ExtractAttributes;
     use Traits\Messages;
     use Traits\Files;
 
@@ -199,7 +196,7 @@ class Extension  {
                 $storage['admin'][] = $this->joinOsPath($componentDir, $node);
             }
             else {
-                $attribs = $this->extractAttributes($node, ['folder' => '']);
+                $attribs = $this->manifest->extractAttributes($node, ['folder' => '']);
                 if(false === $attribs) {
                     return false;
                 }

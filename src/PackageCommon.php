@@ -13,7 +13,6 @@ use Procomputer\Joomla\Model\Progress;
 
 class PackageCommon  {
     
-    use Traits\ExtractAttributes;
     use Traits\Messages;
     use Traits\Files;
 
@@ -21,7 +20,7 @@ class PackageCommon  {
     
     /**
      * Extension manifest object.
-     * @var Procomputer\Joomla\Manifest
+     * @var \Procomputer\Joomla\Manifest
      */
     protected $manifest = null;
     
@@ -130,10 +129,9 @@ class PackageCommon  {
     }
     
     /**
-     * <files folder="site">
+     * @param \stdClass $node
      */
-    protected function _processSectionFiles(Manifest $manifest, $isOptional = false) {
-        $sectionName = 'files';
+    protected function _processSectionFiles($node) {
         /*
         <files folder="site">
             <filename>controller.php</filename>
@@ -144,17 +142,7 @@ class PackageCommon  {
             <folder>models</folder>
         </files>
         */        
-        $data = $manifest->getData();
-        $files = $data->{$sectionName} ?? null;
-        if(null === $files) {
-            if(! $isOptional) {
-                // 'pccoptionselector.xml' manifest file error: 'files' is missing";
-                // In XML package file 'mod_pccevent.xml': 'files' section is missing")
-                $this->_packageMessage("WARNING: '{$sectionName}' section is missing");
-            }
-            return true;
-        }
-        return $this->_processFiles($files);
+        return $this->_processFiles($node, 'files');
     }
     
     /*
@@ -184,130 +172,260 @@ class PackageCommon  {
     </languages>
     */        
     /**
-     * <files folder="site">
+     * @param \stdClass $node
      */
-    protected function _processFiles($node) {
-        $attribs = $this->extractAttributes($node, ['folder' => '']);
-        if(false === $attribs) {
+    protected function _processFiles($node, string $tag = 'Manifest') {
+        // Extract 'media' elements (there may be 0 to multiple)
+        $groups = $this->manifest->extractGroups($node);
+        if(! count($groups)) {
+            $this->_packageMessage("{$tag} section is empty");
             return false;
         }
-        $destDir = $attribs['folder'];
-        $joomlaDir = $this->_installation->webRoot;
-        $clientDir = (empty($destDir) || 'site' === $destDir) ? '' : 'administrator';
+        if(count($groups) > 1) {
+            $this->_packageMessage("multiple '{$tag}' elements", false);
+        }
         $extensionName = basename(dirname($this->manifestFile));
-        // C:\inetpub\joomlapcc\components\com_pccevents\controller.php
-        // C:\inetpub\joomlapcc\modules\mod_pccproducts\mod_pccproducts.php
-        $extensionType = $this->_extension->getType() . 's';
-        $sourceDir = $this->joinPath($joomlaDir, $clientDir, $extensionType, $extensionName);
-        $groups = [$node->filename ?? null, $node->folder ?? null];
-        foreach($groups as $files) {
-            if(null !== $files) {
-                foreach(is_string($files) ? [$files] : $files as $node) {
-
-                    // If X number of seconds elapsed re-open the file driver FTP connection and reset the timer.
-                    $elapsed = $this->_progress->getInterval(false, __CLASS__ . '::' . __FUNCTION__);
-                    if($elapsed >= 10 && method_exists($this->_fileDriver, 'reopen')) {
-                        $this->_fileDriver->reopen();
-                        $this->_progress->getInterval(); // Reset the timer.
+        $joomlaDir = $this->_installation->webRoot;
+        $return = true;
+        foreach($groups as $properties) {
+            $data = $attribs = null;
+            if(is_array($properties) && 2 === count($properties)) {
+                list($d, $attribs) = $properties;
+                if(is_object($d)) {
+                    $a = (array)$d;
+                    if(count($a)) {
+                        $data = $d;
                     }
-
-                    if(is_string($node)) {
-                        $file = $node;
-                    }
-                    else {
-                        $file = $node->_value ?? null;
-                    }
-                    $sourceFile = $this->joinPath($sourceDir, $file);
-                    $destFile = $this->joinPath($destDir, $file);
-                    $this->addFile($sourceFile, $destFile);
+                }
+            }
+            if(empty($data)) {
+                $this->_packageMessage("a '{$tag}' element is empty", false);
+                continue;
+            }
+            $destDir = trim($attribs['folder'] ?? '');
+            $clientDir = (empty($destDir) || 'site' === $destDir) ? '' : 'administrator';
+            // C:\inetpub\joomlapcc\components\com_pccevents\controller.php
+            // C:\inetpub\joomlapcc\modules\mod_pccproducts\mod_pccproducts.php
+            $extensionType = $this->_extension->getType() . 's';
+            $sourceDir = $this->joinPath($joomlaDir, $clientDir, $extensionType, $extensionName);
+            if(! is_dir($sourceDir)) {
+                $this->_packageMessage("Source folder not found: {$sourceDir}");
+                $return = false;
+            }
+            else {
+                // Extract only the elemnts specified in filter and convert to array.
+                $files = $this->manifest->extractElements($data, ['filename', 'folder']) ;
+                if(empty($files)) {
+                    $this->_packageMessage("SKIPPED: {$tag} section contains no file nor folder entries.", false);
+                    continue;
+                }
+                $this->_updateProgress(__FUNCTION__);
+                if(false === $this->_addFiles($files, $sourceDir, $destDir, $tag)) {
+                    $return = false;
                 }
             }
         }
-        return true;
+        return $return;
     }
     
     /**
-     * @param object $languages
-     * @return boolean Returns TRUE if success else FALSE.
+     * 
+     * @param \stdClass $node
+     * @return bool Returns true if success else false.
      */
-    protected function _processSectionLanguages($manifest, $isOptional = false) {
-        if($manifest instanceof Manifest) {
-            $languages = $manifest->getProperty('languages');
-            if(null === $languages) {
-                // 'pccoptionselector.xml' manifest file error: 'files' is missing";
-                // In XML package file 'mod_pccevent.xml': 'files' section is missing")
-                $this->_packageMessage("WARNING: 'languages' section is missing");
-                return $isOptional ? true : false;
-            }
-        }
-        else {
-            $languages = $manifest;
-        }
+    protected function _processSectionMedia($node) {
         /*
-        <languages folder="admin">
-            <language tag="en-GB">language/en-GB.com_pccoptionselector.ini</language>
-            <language tag="en-GB">language/en-GB.com_pccoptionselector.sys.ini</language>
-        </languages>
-
-        <languages folder="site">
-            <language tag="en-GB">language/en-GB.com_pccoptionselector.ini</language>
-        </languages>
-
-        <languages folder="site">
-            <language tag="en-GB">language/en-GB.mod_pccproducts.ini</language>
-            <language tag="en-GB">language/en-GB.mod_pccproducts.sys.ini</language>
-        </languages>
-        */
+        <media destination="com_pccevents" folder="media">
+            <filename>index.html</filename>
+            <folder>images</folder>
+            <folder>css</folder>
+        </media>
+        */        
+        $tag = 'media';
         
-        $attribs = $this->extractAttributes($languages, ['folder' => '']);
-        $langFolder = strtolower(trim($attribs['folder']));
-        if(Types::isBlank($langFolder)) {
-            $file = $langFolder = false;
-            $obj = $languages->language;
-            if(isset($obj->_value)) {
-                $file = $obj->_value;
-            }
-            else {
-                foreach($obj as $key => $node) {
-                    $file = isset($node->_value) ? $node->_value : $node;
-                    break;
-                }
-            }
-            if(is_string($file) && ! Types::isBlank($file)) {
-                $parts = explode('/', str_replace('\\', '/', $file));
-                $langFolder = $parts[0];
-            }
-            if(empty($langFolder)) {
-                $var = Types::getVartype($langFolder);
-                $msg = "Missing language folder '{$var}': expecting 'admin' or 'site'";
-                $this->saveError($msg);
-                return false;
-            }
-        }
-        switch($langFolder) {
-        case 'admin':
-            // administrator/language/en-GB
-            $sourceFolder = 'administrator';
-            break;
-        case 'site':
-            $sourceFolder = '';
-            break;
-        default:
-            $var = Types::getVartype($langFolder);
-            $msg = "Unsupported language folder '{$var}': expecting 'admin' or 'site'";
-            $this->saveError($msg);
+        // Extract 'media' elements (there may be 0 to multiple)
+        $groups = $this->manifest->extractGroups($node);
+        if(! count($groups)) {
+            $this->_packageMessage("{$tag} section is empty");
             return false;
         }
-        $obj = $languages->language;
-        if(isset($obj->_value)) {
-            $this->_addLanguageFile($obj, $langFolder, $sourceFolder);
+        if(count($groups) > 1) {
+            $this->_packageMessage("multiple '{$tag}' elements", false);
         }
-        else {
-            foreach($obj as $key => $node) {
-                $this->_addLanguageFile($node, $langFolder, $sourceFolder);
+        $extensionName = basename(dirname($this->manifestFile));
+        $joomlaDir = $this->_installation->webRoot;
+        $return = true;
+        foreach($groups as $properties) {
+            if(empty($properties)) {
+                continue;
+            }
+            list($data, $attr) = $properties;
+            $attribs = $this->manifest->filterArray($attr, ['folder', 'destination']);
+            $folder = $attribs['folder']; // Usually 'media' folder.
+            $destination = Types::isBlank($attribs['destination']) ? $extensionName : trim($attribs['destination']) ;
+            
+            $dir = $this->joinPath($joomlaDir, $folder, $destination); 
+            $sourceDir = realpath($dir);
+            if(false === $sourceDir || ! is_dir($sourceDir)) {
+                $this->_packageMessage("Media folder not found: {$dir}");
+                $return = false;
+            }
+            
+            $this->_updateProgress(__FUNCTION__);
+            
+            // Get just the file-type elements from which to impoer the folders/files.
+            $files = $this->manifest->extractElements($data, ['filename', 'folder']) ;
+            if(empty($files)) {
+                $path = $folder . '/' . $destination;
+                $this->_packageMessage("SKIPPED: media section having path '{$path}' contains no file nor folder entries.", false);
+                continue;
+            }
+            if(false === $this->_addFiles($files, $sourceDir, $folder, $tag)) {
+                $return = false;
             }
         }
-        return true;
+        return $return;
+    }
+
+    /*
+    <languages folder="admin">
+        <language tag="en-GB">language/en-GB.com_pccoptionselector.ini</language>
+        <language tag="en-GB">language/en-GB.com_pccoptionselector.sys.ini</language>
+    </languages>
+
+    <languages folder="site">
+        <language tag="en-GB">language/en-GB.com_pccoptionselector.ini</language>
+    </languages>
+
+    <languages folder="site">
+        <language tag="en-GB">language/en-GB.mod_pccproducts.ini</language>
+        <language tag="en-GB">language/en-GB.mod_pccproducts.sys.ini</language>
+    </languages>
+    */
+
+    /**
+     * @param \stdClass $node
+     * @return bool
+     */
+    protected function _processSectionLanguages($node, string $defaultFolder) {
+        $tag = 'languages';
+        
+        // Extract 'media' elements (there may be 0 to multiple)
+        $groups = $this->manifest->extractGroups($node);
+        if(! count($groups)) {
+            $this->_packageMessage("{$tag} section is empty");
+            return false;
+        }
+        if(count($groups) > 1) {
+            $this->_packageMessage("multiple '{$tag}' elements", false);
+        }
+        $return = true;
+        foreach($groups as $properties) {
+            if(! is_array($properties) || 2 !== count($properties)) {
+                $this->_packageMessage("an empty node encountered in '{$tag}' elements", false);
+                continue;
+            }
+            list($data, $attribs) = $properties;
+            $langFolder = strtolower(trim($attribs['folder'] ?? ''));
+            if(Types::isBlank($langFolder)) {
+                $langFolder = $defaultFolder;
+            }
+            switch($langFolder) {
+            case 'admin':
+                // administrator/language/en-GB
+                $sourceFolder = 'administrator';
+                break;
+            case 'site':
+                $sourceFolder = '';
+                break;
+            default:
+                $var = Types::getVartype($langFolder);
+                $msg = "Unsupported language folder attribute '{$var}': expecting 'admin' or 'site'";
+                $this->saveError($msg);
+                continue 2;
+            }
+            $files = $this->manifest->extractElements($data, ['language']);
+            if(empty($files)) {
+                $var = Types::getVartype($langFolder);
+                $msg = "WARNING: No 'language' tags found in '{$tag}' element for folder '{$var}'";
+                $this->saveError($msg);
+                continue;
+            }
+            foreach($files as $node) {
+                if(empty($node)) {
+                    $var = Types::getVartype($langFolder);
+                    $msg = "WARNING: a 'language' element in folder '{$langFolder}' is empty";
+                    $this->saveError($msg);
+                    continue;
+                }
+                $list = $this->manifest->extractGroups($node);
+                foreach($list as $props) {
+                    list($propData, $attr) = $props;
+                    if(false === $this->_addLanguageFile($propData, $langFolder, $sourceFolder)) {
+                        $return = false;
+                    }                        
+                }
+            }
+        }
+        return $return;
+    }
+    
+    /**
+     * 
+     * @param array  $fileList
+     * @param string $sourceFolder
+     * @param string $destFolder
+     * @param string $tag
+     * @return bool Return true if success else false.
+     */
+    protected function _addFiles(array $fileList, string $sourceFolder, string $destFolder, string $tag = 'Manifest') {
+        $return = true;
+        foreach($fileList as $type => $files) {
+            if(is_object($files)) {
+                $files = (array)$files;
+            }
+            elseif(is_string($files)) {
+                $files = [$files];
+            }
+            foreach($files as $node) {
+                if(is_string($node)) {
+                    $file = $node;
+                }
+                elseif(is_object($node)) {
+                    $file = $node->_value ?? '';
+                }
+                $file = trim($file);
+                if(! strlen($file)) {
+                    $this->_packageMessage("A {$tag} '{$type}' element has an empty value");
+                    $return = false;
+                }
+                else {
+                    $error = false;
+                    $sourceFile = $this->joinPath($sourceFolder, $file);
+                    if('folder' === $type) {
+                        if(! is_dir($sourceFile)) {
+                            $return = false;
+                            $error = true;
+                        }
+                    }
+                    else {
+                        $realpath = realpath($sourceFile);
+                        if(! is_file($realpath)) {
+                            $return = false;
+                            $error = true;
+                        }
+                    }
+                    if($error) {
+                        $this->_packageMessage("{$tag} {$type} '{$file}' not found: {$sourceFile}");
+                    }
+                    else {
+                        $destFile = $this->joinPath($destFolder, $file);
+                        $this->addFile($sourceFile, $destFile);
+                    }
+                }
+            }
+        }
+        return $return;
     }
     
     /**
@@ -326,7 +444,7 @@ class PackageCommon  {
         }
         $pkgFile = $this->joinPath($langFolder, $file);
         
-        $nodeAttribs = $this->extractAttributes($node, ['tag' => '']);
+        $nodeAttribs = $this->manifest->extractAttributes($node, ['tag' => '']);
         $locale = trim($nodeAttribs['tag']);
         if(empty($locale)) {
             $msg = "WARNING: Missing 'tag' language attribute";
@@ -344,71 +462,57 @@ class PackageCommon  {
             return false;
         }
         
-        // If X number of seconds elapsed re-open the file driver FTP connection and reset the timer.
-        $elapsed = $this->_progress->getInterval(false, __CLASS__ . '::' . __FUNCTION__);
-        if($elapsed >= 10 && method_exists($this->_fileDriver, 'reopen')) {
-            $this->_fileDriver->reopen();
-            $this->_progress->getInterval(); // Reset the timer.
-        }
+        $this->_updateProgress(__FUNCTION__);
 
-        $this->addFile($source, $pkgFile);
+        return $this->addFile($source, $pkgFile);
     }
     
     
     /**
-     * <media destination="com_pccevents" folder="media">
+     * 
+     * @param type $groups
+     * @param array $keys
+     * @return bool|string
      */
-    protected function _processSectionMedia(Manifest $manifest, $isOptional = false) {
-        /*
-        <media destination="com_pccevents" folder="media">
-            <filename>index.html</filename>
-            <folder>images</folder>
-            <folder>css</folder>
-        </media>
-        */        
-        $sectionName = 'media';
-        $properties = $manifest->getProperty($sectionName);
-        if(null === $properties) {
-            if($isOptional) {
-                return true;
-            }
-            $this->_packageMessage("'{$sectionName}' section is empty");
+    protected function _processSections($groups, array $keys) {        
+        if(null === $groups) {
             return false;
         }
-        $extensionName = basename(dirname($this->manifestFile));
-        $joomlaDir = $this->_installation->webRoot;
-        /* @var $node \SimpleXMLElement */
-        $attribs = $this->extractAttributes($properties, ['folder' => '', 'destination' => '']);
-        $folder = $attribs['folder'];
-        // $destination = $attribs['destination'];
-        $sourceDir = $this->joinPath($joomlaDir, $folder, $extensionName); 
-        $groups = [$properties->filename ?? null, $properties->folder ?? null];
-        foreach($groups as $files) {
-            if(null !== $files) {
-                foreach(is_string($files) ? [$files] : $files as $node) {
-
-                    // If X number of seconds elapsed re-open the file driver FTP connection and reset the timer.
-                    $elapsed = $this->_progress->getInterval(false, __CLASS__ . '::' . __FUNCTION__);
-                    if($elapsed >= 10 && method_exists($this->_fileDriver, 'reopen')) {
-                        $this->_fileDriver->reopen();
-                        $this->_progress->getInterval(); // Reset the timer.
-                    }
-
-                    if(is_string($node)) {
-                        $file = $node;
+        $sections = $this->manifest->extractGroups($groups);
+        $return = [];
+        foreach($sections as $node) {
+            foreach($keys as $key) {
+                $value = isset($node->{$key}) ? $node->{$key} : null;
+                if(! empty($value)) {
+                    if(is_string($value)) {
+                        $value = trim($value);
+                        if(strlen($value)) {
+                            $return[$key][] = $value;
+                        }
                     }
                     else {
-                        $file = $node->_value ?? null;
+                        $list = $this->manifest->extractGroups($value);
+                        foreach($list as $value) {
+                            if(is_string($value)) {
+                                $value = trim($value);
+                                if(strlen($value)) {
+                                    $return[$key][] = $value;
+                                }
+                            }
+                            elseif(is_object($value) && isset($value->_value)) {
+                                $value = trim($value->_value ?? '');
+                                if(strlen($value)) {
+                                    $return[$key][] = $value;
+                                }
+                            }
+                        }
                     }
-                    $sourceFile = $this->joinPath($sourceDir, $file);
-                    $destFile = $this->joinPath($folder, $file);
-                    $this->addFile($sourceFile, $destFile);
                 }
             }
         }
-        return true;
+        return $return;
     }
-    
+
     /**
      * Export tables used by the package into CREATE TABLE statements and INSERT INTO statements.
      * 
@@ -494,7 +598,7 @@ class PackageCommon  {
     protected function _getDbTablesDropCreateInsert($node, $label) {
         // 
         $obj = isset($node->file) ? $node->file : $node;
-        $attr = $this->extractAttributes($obj);
+        $attr = $this->manifest->extractAttributes($obj);
         $file = isset($obj->_value) ? $obj->_value : null;
         if(empty($file)) {
             $msg = "The {$label} file specified in the manifest missing or the data is corrupt";
@@ -682,14 +786,7 @@ class PackageCommon  {
             $options = [];
         }
         $options['callback'] = function($properties) {
-            // If X number of seconds elapsed re-open the file driver FTP connection and reset the timer.
-            $elapsed = $this->_progress->getInterval(false, __CLASS__ . '::' . __FUNCTION__);
-            if($elapsed >= 10 && method_exists($this->_fileDriver, 'reopen')) {
-                if(false === $this->_fileDriver->reopen()) {
-                    return false;
-                }
-                $this->_progress->getInterval(); // Reset the timer.
-            }
+            $this->_updateProgress(__FUNCTION__);
             return true;
         };
         $archiver = $this->getArchiver($file, $zipOptions, $options);
@@ -792,15 +889,33 @@ class PackageCommon  {
      * @param array $manifestElements
      * @return array|true
      */
-    public function checkRequirements(array $manifestElements) {
+    public function checkRequiredElementsExist(array $manifestElements) {
         if(empty($manifestElements)) {
             return true;
         }
         /** @var Manifest $manifest */
-        $data = $this->_extension->getManifest()->getData();
+        $data = $this->manifest->getData();
         $diff = [];
-        foreach($manifestElements as $name => $required) {
-            if(! isset($data->name) && $required) {
+        foreach($manifestElements as $name) {
+            $obj = $data->{$name} ?? null;
+            $valid = false;
+            if(! empty($obj)) {
+                if(is_object($obj)) {
+                    $groups = $this->manifest->extractGroups($obj);
+                    foreach($groups as $group) {
+                        if(is_object($group[0])) {
+                            $a = (array)$group[0];
+                            if(! empty($a)) {
+                                $valid = true;
+                            }
+                        }
+                    }
+                }
+                elseif(strlen(trim($obj))) {
+                    $valid = true;
+                }
+            }
+            if(! $valid) {
                 $diff[] = $name;
             }
         }
@@ -836,7 +951,7 @@ class PackageCommon  {
         
         // <file type="module" id="pcceventslist" client="site">mod_pcceventslist.zip</file>
         // <file type="component" id="osmembership">com_osmembership.zip</file>
-        $attribs = $this->extractAttributes($node, ['type' => '', 'client' => '', 'id' => '']);
+        $attribs = $this->manifest->extractAttributes($node, ['type' => '', 'client' => '', 'id' => '']);
         if(empty($attribs['type'])) {
             $this->_packageMessage("missing 'type' attribute: {$node->asXML()}", true, $errorSource);
             return false;
@@ -866,22 +981,6 @@ class PackageCommon  {
             . " \n{$sourceFile} \n{$node->asXML()}", true, $errorSource);
         $this->_lastError = self::MISSING_FROM_JOOMLA_INSTALL;    
         return false;
-    }
-    
-    /**
-     * Saves a package assembly error.
-     * @param string $msg The message to store.
-     * @return PackageCommon
-     */
-    protected function _packageMessage($msg, bool $isError = true, string $errorSource = null) {
-        $source = (null === $errorSource) ? null : trim($errorSource);
-        if(empty($source)) {
-            $source = empty($this->_extensionName) ? null : $this->_extensionName;
-        }
-        $source = empty($source) ? '' : " '($source)'";
-        $msg = "In XML package manifest{$source}: {$msg}";
-        $isError ? $this->saveError($msg) : $this->saveMessage($msg);
-        return $this;
     }
     
     /**
@@ -980,4 +1079,37 @@ class PackageCommon  {
         }
         return $this;
     }
+    
+    /**
+     * 
+     */
+    protected function _updateProgress(string $function) {
+        // If X number of seconds elapsed re-open the file driver FTP connection and reset the timer.
+        $elapsed = $this->_progress->getInterval(false, __CLASS__ . '::' . $function);
+        if($elapsed >= 10 && method_exists($this->_fileDriver, 'reopen')) {
+            $this->_fileDriver->reopen();
+            $this->_progress->getInterval(); // Reset the timer.
+        }
+    }
+    
+    /**
+     * Saves a package assembly error.
+     * @param string $message The message to store.
+     * @return PackageCommon
+     */
+    protected function _packageMessage($message, bool $isError = true, string $errorSource = null) {
+        $source = (null === $errorSource) ? null : trim($errorSource);
+        if(empty($source)) {
+            $source = empty($this->_extensionName) ? null : $this->_extensionName;
+        }
+        $source = empty($source) ? '' : " ($source)";
+        $file = basename($this->manifestFile);
+        if(strlen($file)) {
+            $file = ' file ' . $file;
+        }
+        $msg = "In XML package manifest{$file}{$source}: {$message}";
+        $this->saveMessage($msg, $isError);
+        return $this;
+    }
+    
 }

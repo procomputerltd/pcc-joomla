@@ -36,9 +36,9 @@ class Package extends PackageCommon {
             'version' => true,
             ];
         
-        $missing = $this->checkRequirements($manifestElements);
+        $missing = $this->checkRequiredElementsExist($manifestElements);
         if(true !== $missing) {
-            $this->_packageError("required package element(s) missing: " . implode(", ", $missing));
+            $this->_packageMessage("required package element(s) missing: " . implode(", ", $missing));
             return false;
         }
         $this->manifest = $this->_extension->getManifest(); 
@@ -61,18 +61,27 @@ class Package extends PackageCommon {
         }
         
         $sections = [
-            'files' => false,           //_processSectionFiles
-            'administration' => false,  //_processSectionAdministration
-            'languages' => true,       //_processSectionLanguages
-            'scriptfile' => true,      //_processSectionScriptfile
-            'media' => true             //_processSectionMedia
+            'files' => true,          //_processSectionFiles
+            'administration' => true, //_processSectionAdministration
+            'languages' => false,     //_processSectionLanguages
+            'scriptfile' => false,    //_processSectionScriptfile
+            'media' => false          //_processSectionMedia
             ];
         $progress = $this->getProgress();
         $driver = $this->_fileDriver;
         /** @var \Procomputer\Joomla\Drivers\Files\Remote $driver */
-        foreach($sections as $section => $isOptional) {
+        foreach($sections as $section => $required) {
+            $node = $this->manifest->{$section};
+            if(null === $node) {
+                $msg = "WARNING: required manifest XML '{$section}' is empty";
+                $this->saveError($msg);
+                if($required) {
+                    return false;
+                }
+                continue;
+            }
             $method = '_processSection' . ucfirst($section);
-            if(false === $this->$method($this->manifest, $isOptional)) {
+            if(false === $this->$method($node, 'site')) {
                 return false;
             }
             $seconds = $progress->getInterval(true, $method);
@@ -121,8 +130,6 @@ class Package extends PackageCommon {
             }
         }
         
-        $filename = $archiver->getFilename();
-        
         /**
          * 
          */
@@ -132,11 +139,14 @@ class Package extends PackageCommon {
         
         return true;
         
+        /*
+        $filename = $archiver->getFilename();
         if(! $archiver->close()) {
             $this->saveError($archiver->getErrors());
             return false;
         }
         return $filename;
+         */
     }
     
     /**
@@ -147,10 +157,14 @@ class Package extends PackageCommon {
         $valid = true;
         //<scriptfile>script.php</>
         //<files folder="packages">	   
-        foreach($this->manifest->files as $filesNode) {
+        $files = $this->manifest->files ?? null;
+        if(empty($files)) {
+            return false;
+        }
+        foreach($files as $filesNode) {
             /* @var $filesNode \SimpleXMLElement */
             if(! $filesNode || ! $filesNode->count()) {
-                $this->_packageError("a 'files' section is empty: expecting package ZIP file declarations");
+                $this->_packageMessage("a 'files' section is empty: expecting package ZIP file declarations");
                 $valid = false;
             }
             else {
@@ -181,16 +195,16 @@ class Package extends PackageCommon {
      * 
      * @return boolean
      */
-    protected function _processFile($file) {
+    protected function _processFile($file, string $tag = 'Manifest') {
         
         // <file type="module" id="pcceventslist" client="site">mod_pcceventslist.zip</file>
         
         /* @var $file \SimpleXMLElement */
-        $attribs = $this->extractAttributes($file, ['type' => '']);
+        $attribs = $this->manifest->extractAttributes($file, ['type' => '']);
         $type = $attribs['type'];
         if(empty($type)) {
             $filename = (string)$file;
-            $this->_packageError("'file' node '{$filename}' in the 'files' section is missing the 'type' attribute");
+            $this->_packageMessage("'file' node '{$filename}' in the 'files' section is missing the 'type' attribute");
             return false;
         }
         $class = __NAMESPACE__ . '\Package' . ucfirst($type); // PackageModule
@@ -198,7 +212,7 @@ class Package extends PackageCommon {
             // Unsupported this version:
             // plugin
             // library
-            $this->_packageError("package type '{$type}' not currently supported");
+            $this->_packageMessage("package type '{$type}' not currently supported");
             return false;
         }
         /* @var $obj PackageModule */
@@ -208,7 +222,7 @@ class Package extends PackageCommon {
             if(self::MISSING_FROM_JOOMLA_INSTALL === $obj->getLastError()) {
                 $obj->clearErrors();
                 $basename = pathinfo((string)$file, PATHINFO_FILENAME);
-                $this->_packageError("extension '{$basename}' is not found in the Joomla installation. \n" 
+                $this->_packageMessage("extension '{$basename}' is not found in the Joomla installation. \n" 
                     . "Are you sure the '{$this->_extensionName}' extension in installed in the Joomla installation folder?");
                 return false;
             }

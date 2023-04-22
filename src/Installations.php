@@ -344,12 +344,14 @@ class Installations {
             return false;
         }
         for($i = 0; $i < $num; $i++) {
-            $num = $m[$i][2];
-            if(is_numeric($num)) {
-                $name = strtoupper($m[$i][1]);
-                $index = array_search($name, $labels);
-                if(false !== $index) {
-                    $ver[$index] = $num;
+            if(isset($m[$i])) {
+                $num = $m[$i][2];
+                if(is_numeric($num)) {
+                    $name = strtoupper($m[$i][1]);
+                    $index = array_search($name, $labels);
+                    if(false !== $index) {
+                        $ver[$index] = $num;
+                    }
                 }
             }
         }

@@ -19,7 +19,6 @@ use Procomputer\Pcclib\Types,
 
 class Installation {
 
-    use Traits\ExtractAttributes;
     use Traits\Messages;
     use Traits\XmlJson;
     
@@ -114,8 +113,8 @@ class Installation {
         /** @var \Procomputer\Joomla\PackageComponent $package */
         $success = $package->import($options);
         // Add errors, warnings, messages.
-        $this->saveError($package->getErrors());
-        $this->saveMessage($package->getMessages());
+        $this->saveMessage($package->getErrors(), true);
+        $this->saveMessage($package->getMessages(), false);
         if(! $success) {
             return false;
         }
@@ -124,7 +123,8 @@ class Installation {
         $archiver->close();
         $tempZipFile = $archiver->getZipFile();
         if(! $tempZipFile) {
-            $this->saveError($archiver->getErrors());
+            $this->saveMessage($archiver->getErrors(), true);
+            $this->saveMessage($archiver->getMessages(), false);
             return false;
         }
         

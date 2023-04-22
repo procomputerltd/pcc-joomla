@@ -7,7 +7,6 @@ use Procomputer\Joomla\Drivers\Files\FileDriver;
 
 class Languages {
 
-    use Traits\ExtractAttributes;
     use Traits\Messages;
     use Traits\Files;
     
