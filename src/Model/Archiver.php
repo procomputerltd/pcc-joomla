@@ -289,7 +289,7 @@ class Archiver {
      * @return int
      */
     public function addFileToZip(ZipArchive $zip, string $filePath, string $entryName) {
-        set_error_handler(
+        $errorHandler = set_error_handler(
             static function(int $errno, string $errstr) : void {
                 $msg = "Cannot get information for file: $errstr";
                 throw new RuntimeException($msg, $errno);
@@ -321,7 +321,7 @@ class Archiver {
                     $this->saveError($errors);
                     return false;
                 }
-                set_error_handler(
+                $e = set_error_handler(
                     static function(int $errno, string $errstr) use ($filePath): void {
                         throw new RuntimeException("Cannot write to temporary file contents of file {$filePath}: $errstr", $errno);
                     }
@@ -331,7 +331,7 @@ class Archiver {
                 } catch (\Throwable $exc) {
                     throw new RuntimeException($exc);
                 } finally {
-                    restore_error_handler();
+                    set_error_handler($e);
                 }
 //                if(false === $this->_fileDriver->download($filePath, $tempFile)) {
 //                    $errors = $this->_fileDriver->getErrors();
@@ -348,7 +348,7 @@ class Archiver {
             }
             throw new RuntimeException($msg);
         } finally {
-            restore_error_handler();
+            set_error_handler($errorHandler);
             if(! empty($tempFile) && file_exists($tempFile)) {
                 // unlink($tempFile);
             }
