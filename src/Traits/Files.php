@@ -48,7 +48,7 @@ trait Files {
             throw new RuntimeException($msg);
         }
 
-        set_error_handler(
+        $errorHandler = set_error_handler(
             static function(int $errno, string $errstr) use ($realPath, $limit): void {
                 throw new RuntimeException("Cannot read contents from file $realPath: $errstr", $errno);
             }
@@ -61,7 +61,7 @@ trait Files {
             $this->lastFileError = $msg;
             throw new RuntimeException($msg);
         } finally {
-            restore_error_handler();
+            set_error_handler($errorHandler);
         }
         return false;
     }
@@ -83,7 +83,7 @@ trait Files {
             $this->lastFileError = $msg;
             throw new RuntimeException($msg);
         }
-        set_error_handler(
+        $errorHandler = set_error_handler(
             static function(int $errno, string $errstr) use ($file): void {
                 throw new RuntimeException("Cannot write contents of file $file: $errstr",$errno);
             }
@@ -94,7 +94,7 @@ trait Files {
         } catch (Throwable $exception) {
             throw new RuntimeException("Cannot write to $file: " . $exception->getMessage());
         } finally {
-            restore_error_handler();
+            set_error_handler($errorHandler);
         }
         return false;
     }

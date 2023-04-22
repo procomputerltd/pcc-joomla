@@ -28,6 +28,13 @@ trait XmlJson {
          */
         // $version = '1.0', $encoding = 'utf-8'
         $doc = new \DOMDocument('1.0', 'utf-8');
+        $res = new \stdClass();
+        $res->fail = false;
+        $res->error = '';
+        $errorHandler = set_error_handler(function($errno, $errstr, $errfile, $errline) use($res) {
+            $res->fail = true;
+            $res->error = $errstr;
+        });
         try {
             if($doc->loadXML($xmlString)) {
                 // $manifest = simplexml_load_string($xmlString);
@@ -39,8 +46,13 @@ trait XmlJson {
                     }
                 }
             }
+            else {
+                $msg = $res->error;
+            }
         } catch (\Throwable $ex) {
             $msg = "{$ex->getMessage()} {$ex->getFile()} ({$ex->getLine()})";
+        } finally {
+            set_error_handler($errorHandler);
         }
         if(empty($msg)) {
             $msg = "The manifest XML data cannot be interpreted as XML";

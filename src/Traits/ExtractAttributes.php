@@ -12,39 +12,3 @@ namespace Procomputer\Joomla\Traits;
  * for more details.
  */
 
-trait ExtractAttributes {
-    
-    /**
-     * Extracts element attributes.
-     * @param stdClass|array|\SimpleXMLElement $node
-     * @param array $defaults
-     * @return array
-     */
-    public function extractAttributes($node, array $defaults = []) {
-        $var = '@attributes';
-        if(is_array($node)) {
-            if(isset($node[$var])) {
-                $list = $node[$var];
-            }
-        }
-        elseif($node instanceof \stdClass) {
-            if(isset($node->$var)) {
-                $list = $node->$var;
-            }
-        }
-        else {
-            if(is_object($node)) {
-                if(method_exists($node, 'attributes')) {
-                    $list = $node->attributes();
-                }
-            }
-        }
-        if(isset($list)) {
-            foreach($list as $key => $child) {
-                $defaults[$key] = (string)$child;
-            }
-        }
-        return $defaults;
-    }
-    
-}

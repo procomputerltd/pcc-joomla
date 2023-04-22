@@ -7,7 +7,7 @@ trait Messages {
      * Messages and errors saved.
      * @var array
      */
-    protected $_messages = [[], []];
+    protected $_messages = [[], []]; // 0 = message, 1 = errors.
 
     /**
      * Saves error or errors.
@@ -21,27 +21,30 @@ trait Messages {
     /**
      * Saves message or messages.
      * @param array|string $messages Messages to save.
+     * @param bool         $isError  The message is an error message as opoosed to general info message.
      * @return self
      */
-    public function saveMessage($messages, $isError = false) {
+    public function saveMessage($messages, bool $isError = false) {
         $this->_saveMessage($messages, $isError);
         return $this;
     }
     /**
      * Alias for saveMessage().
      * @param array|string $messages Messages to save.
+     * @param bool         $isError  The message is an error message as opoosed to general info message.
      * @return self
      */
-    public function addMessage($messages, $isError = false) {
+    public function addMessage($messages, bool $isError = false) {
         return $this->_saveMessage($messages, $isError);
     }
 
     /**
      * Saves message or messages.
      * @param array|string $messages Messages to save.
+     * @param bool         $isError  The message is an error message as opoosed to general info message.
      * @return self
      */
-    protected function _saveMessage($messages, $isError = false) {
+    protected function _saveMessage($messages, bool $isError = false) {
         if(is_array($messages)) {
             if(empty($messages)) {
                 return $this;
