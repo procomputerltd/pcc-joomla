@@ -4,12 +4,14 @@
  */
 namespace Procomputer\Joomla;
 
-use Procomputer\Pcclib\Types,
-    Procomputer\Pcclib\FileSystem;
+use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\FileSystem;
+use Procomputer\Pcclib\Messages\Messages;
+use ArrayObject, RuntimeException;
 
 class ComponentManager {
 
-    use Traits\Messages;
+    use Messages;
     use Traits\Files;
     
     const FLAG_IGNORE = 0;
@@ -91,10 +93,10 @@ class ComponentManager {
     /**
      * Creates Joomla component directories and files and insert properties into embedded {{tags}}
      * @param array|\Traversable $formData
-     * @param array|\Traversable $options
-     * @return boolean
+     * @param array $options
+     * @return string|bool
      */
-    public function createComponent($formData, $options = null) {
+    public function createComponent(array|\Traversable $formData, array $options = []): string|bool {
 
         $lcOptions = (null === $options) ? [] : array_change_key_case((array)$options);
 
@@ -104,14 +106,14 @@ class ComponentManager {
         foreach($this->_properties as $name => $required) {
             if(! isset($formData[$name]) || null === $formData[$name]) {
                 $msg = "The '{$name}' form element name is missing from the form data.";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 return false;
             }
             else {
                 $trimmed = trim((string)$formData[$name]);
                 if($required && ! strlen($trimmed)) {
                     $msg = "The REQUIRED '{$name}' form element value is missing.";
-                    $this->saveError($msg);
+                    $this->saveMessage($msg);
                     return false;
                 }
             }
@@ -139,7 +141,7 @@ class ComponentManager {
         if(! is_string($outputDirectory) || ! is_dir($outputDirectory)) {
             $var = Types::getVartype($outputDirectory);
             $msg = "Output directory parameter not a directory:\n'{$var}'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
 
@@ -166,15 +168,15 @@ class ComponentManager {
      * Creates Joomla component directories and files and insert properties into embedded {{tags}}
      * @param string  $outputDirectory     Directory to accept the component files.
      * @param string  $joomlaExtensionName The Joomla component name like 'com_somecomponent'
-     * @param boolean $overwrite           When true files and directories are overwritten.
-     * @return boolean
+     * @param bool    $overwrite           When true files and directories are overwritten.
+     * @return bool
      */
-    protected function _processTemplateFiles($outputDirectory, $joomlaExtensionName, $overwrite = false) {
+    protected function _processTemplateFiles(string $outputDirectory, string $joomlaExtensionName, bool $overwrite = false): bool {
 
         $componentDir = $this->joinPath($outputDirectory, $joomlaExtensionName);
         if(file_exists($componentDir) && ! is_dir($componentDir)) {
             $var = Types::getVartype($componentDir);
-            $this->saveError("Output file is not a director:\n'{$var}'");
+            $this->saveMessage("Output file is not a directory:\n'{$var}'");
             return false;
         }
 
@@ -187,13 +189,13 @@ class ComponentManager {
         }
         if($isInside) {
             $var = Types::getVartype($outputDirectory);
-            $this->saveError("Output directory must not be inside source directory:\n'{$var}'");
+            $this->saveMessage("Output directory must not be inside source directory:\n'{$var}'");
             return false;
         }
         if(file_exists($componentDir)) {
             if(! $overwrite) {
                 $var = Types::getVartype($componentDir);
-                $this->saveError("Component '{$joomlaExtensionName}' exists in the component directory and overwrite option is FALSE\n'{$var}'");
+                $this->saveMessage("Component '{$joomlaExtensionName}' exists in the component directory and overwrite option is FALSE\n'{$var}'");
                 return false;
             }
             if(! $this->_removeDir($componentDir, true)) {
@@ -210,21 +212,21 @@ class ComponentManager {
      *
      * @param string $outputDirectory
      * @param string $extensionName
-     * @return boolean|\ArrayObject
+     * @return bool|ArrayObject
      */
-    public function _replaceComponentTags($outputDirectory, $extensionName) {
+    public function _replaceComponentTags(string $outputDirectory, string $extensionName): bool|ArrayObject{
         $fs = new FileSystem();
         $scanFiles = $fs->scanFiles($outputDirectory, FileSystem::INCLUDE_DIRECTORY_CHILDREN);
         if(false === $scanFiles) {
-            $this->saveError($fs->getMessages());
+            $this->saveMessage($fs->getMessages());
             return false;
         }
         if(! is_array($scanFiles) || empty($scanFiles)) {
-            $this->saveError("No files found in directory: '{$outputDirectory}'");
+            $this->saveMessage("No files found in directory: '{$outputDirectory}'");
             return false;
         }
         $componentTag = 'component_name';
-        $directories = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS) ;
+        $directories = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS) ;
         if(false === $this->_renameComponentFilesRecurse($scanFiles, $extensionName, $componentTag, $directories, $outputDirectory)) {
             return false;
         }
@@ -236,8 +238,7 @@ class ComponentManager {
             }
         }
     }
-    protected function _renameComponentFilesRecurse(array $sourceFiles, $extensionName, $componentTag,
-        \ArrayObject $directories, $parentDir) {
+    protected function _renameComponentFilesRecurse(array $sourceFiles, string $extensionName, string $componentTag, ArrayObject $directories, string $parentDir): bool {
         foreach($sourceFiles as $name => $file) {
             if(is_array($file)) {
                 if(count($file)) {
@@ -271,7 +272,7 @@ class ComponentManager {
                 if(false !== strpos($data, '{{')) {
                     $newData = preg_replace($this->_tagReplacements[0], $this->_tagReplacements[1], $data);
                     if(false === $newData) {
-                        $this->saveError("preg_replace() failed in line " . __LINE__ . " file " . __FILE__);
+                        $this->saveMessage("preg_replace() failed in line " . __LINE__ . " file " . __FILE__);
                         return false;
                     }
                     if(strcmp($data, $newData)) {
@@ -286,13 +287,19 @@ class ComponentManager {
         return true;
     }
 
-    protected function _prepareTagReplacements(array $formData) {
+    /**
+     * 
+     * @param array $formData
+     * @return array
+     */
+    protected function _prepareTagReplacements(array $formData): array {
         /**
          * Prepare the special tags.
          */
         $extensionName = trim($formData['com_name']);
         $lowerName = strtolower($extensionName);
         $sentenceName = trim($formData['com_name_sentencecase']);
+        $formData = [];
         $formData['com_name_ucfirst'] = ucfirst($extensionName);
         $formData['com_name_lowercase'] = $lowerName;
         $formData['com_name_uppercase'] = strtoupper($extensionName);
@@ -328,14 +335,14 @@ class ComponentManager {
     /**
      * Check a component for missing folders and/or files.
      * @param string $extensionName
-     * @return boolean|array
+     * @return array|bool
      */
-    public function checkForMissingFoldersAndFiles($extensionName) {
+    public function checkForMissingFoldersAndFiles(string $extensionName): array|bool {
         //
         if(! is_string($extensionName) || ! strlen(trim($extensionName))) {
             $var = Types::getVartype($extensionName);
             $msg = "The componet name parameter '{$var}' is invalid.";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         $componentDir = $this->getComponentsDirectory();
@@ -347,13 +354,13 @@ class ComponentManager {
         if(! is_dir($componentDir)) {
             $var = Types::getVartype($extensionName);
             $msg = "Directory for component '{$var}' not found\n{$componentDir}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         if(! is_dir($templateDir)) {
             $var = Types::getVartype($templateDir);
             $msg = "Template directory not found:\n{$var}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         $dirsOnly = [];
@@ -364,7 +371,7 @@ class ComponentManager {
             if(false === $scanFiles) {
                 return false;
             }
-            $list = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+            $list = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
             $this->_getScanFilesListRecurse($scanFiles, $list);
             $array = array_values((array)$list);
             $fullPaths[$key] = $array;
@@ -415,13 +422,13 @@ class ComponentManager {
     }
     /**
      *
-     * @param array        $dirs
-     * @param \ArrayObject $list
+     * @param array       $dirs
+     * @param ArrayObject $list
      */
-    protected function _getScanFilesListRecurse($dirs, $list)  {
-        foreach($dirs as $name => $item) {
+    protected function _getScanFilesListRecurse(array $dirs, ArrayObject $list)  {
+        foreach($dirs as $item) {
             if(is_array($item)) {
-                foreach($item as $key => $file) {
+                foreach($item as $file) {
                     if(is_array($file)) {
                         $this->_getScanFilesListRecurse($file, $list);
                     }
@@ -436,12 +443,12 @@ class ComponentManager {
         }
     }
 
-    public function createTmplFoldersAndFiles($options = null) {
+    public function createTmplFoldersAndFiles(array|bool $options = false): bool {
         if(is_bool($options)) {
             $overwrite = $options;
         }
         else {
-            $lcOptions = (null === $options) ? [] : array_change_key_case((array)$options);
+            $lcOptions = array_change_key_case($options);
             $overwrite = (isset($lcOptions['overwrite']) && $lcOptions['overwrite']) ? true : false;
         }
         $indexHtml = '<html><body bgcolor="#FFFFFF"></body></html>';
@@ -449,7 +456,7 @@ class ComponentManager {
         if(is_dir($rootDir)) {
             if(! $overwrite) {
                 $msg = "Cannot create template from Joomla documentation: directory exists and overwrite-allow option is OFF";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 return false;
             }
             if(! $this->rrmdir($rootDir)) {
@@ -465,7 +472,7 @@ class ComponentManager {
         $rootDir .= '/';
         $imageDir = $this->joinPath($this->getComponentsTemplateDirectory(), 'media/images');
         $templateFiles = $this->_getJoomlaTutorialFiles();
-        $downloadErrors = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+        $downloadErrors = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         foreach($templateFiles as $file => $properties) {
             list($id, $url) = $properties;
             $path = $rootDir . $file;
@@ -517,27 +524,27 @@ class ComponentManager {
     /**
      * Removes PhpDOC headers from PHP files under the specified directory and sub-dirs.
      * @param string $directory Root directory under which to process files.
-     * @return \ArrayObject|boolean Returns list of files or FALSE on error.
+     * @return ArrayObject|bool Returns list of files or FALSE on error.
      */
-    public function removeHeaders($directory) {
+    public function removeHeaders(string $directory): array|bool {
         $fs = new FileSystem();
         $scanFiles = $fs->scanFiles($directory, FileSystem::INCLUDE_DIRECTORY_CHILDREN);
         if(false === $scanFiles) {
-            $this->saveError($fs->getMessages());
+            $this->saveMessage($fs->getMessages());
             return false;
         }
         if(! is_array($scanFiles) || empty($scanFiles)) {
-            $this->saveError("No files found in directory: '{$directory}'");
+            $this->saveMessage("No files found in directory: '{$directory}'");
             return false;
         }
         $pattern = '~^[\s]*\<\?php[\s]+/\*\*.*@package.*?\*/[\s]*(.*)~s';
-        $list = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS) ;
+        $list = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS) ;
         if(false === $this->_removeHeadersRecurse($scanFiles, $list, $pattern)) {
             return false;
         }
         return $list;
     }
-    protected function _removeHeadersRecurse(array $sourceFiles, \ArrayObject $list, $pattern) {
+    protected function _removeHeadersRecurse(array $sourceFiles, ArrayObject $list, string $pattern): bool {
         foreach($sourceFiles as $name => $file) {
             if(is_array($file)) {
                 $this->_removeHeadersRecurse($file, $list, $pattern);
@@ -559,7 +566,7 @@ class ComponentManager {
         return true;
     }
 
-    protected function _downloadTutorialCode($url, $id, $downloadErrors) {
+    protected function _downloadTutorialCode(string $url, string $id, ArrayObject $downloadErrors): mixed {
         // 'helloworld.xml' => "/Special:MyLanguage/J3.2:Developing_an_MVC_Component/Adding_a_front-end_form#helloworld.xml",
         $data = $this->_getFileContents($url);
         if(false === $data) {
@@ -593,7 +600,7 @@ class ComponentManager {
         return $code;
     }
 
-    protected function _decodeHtml($html) {
+    protected function _decodeHtml(string $html): string {
         $code = html_entity_decode(strip_tags($html));
         $code = str_replace('&#39;', '"', $code);
         return $code;
@@ -615,7 +622,16 @@ class ComponentManager {
         return $code;
     }
 
-    protected function _preparePattern($template, $id, $modifier = 's', $tail = '', $delimiter = '~') {
+    /**
+     * 
+     * @param string $template
+     * @param string $id
+     * @param string $modifier
+     * @param string $tail
+     * @param string $delimiter
+     * @return string
+     */
+    protected function _preparePattern(string $template, string $id, string $modifier = 's', string $tail = '', string $delimiter = '~'): string {
         $replace = [
             '__SPC__'       => '[\\s]*',
             '__SPC_PLUS__'  => '[\\s]+',
@@ -633,7 +649,7 @@ class ComponentManager {
         return $pattern;
     }
 
-    protected function _parseLines($str) {
+    protected function _parseLines(string $str): array {
         $lines = explode("\n", str_replace("\r", "\n", str_replace("\r\n", "\n", $str)));
         return $lines;
     }
@@ -641,23 +657,24 @@ class ComponentManager {
     /**
      * Finds unique '{{tags}}' in files in a directory and sub-directories.
      * @param string $directory Directory in which to find tags.
-     * @return boolean
+     * @param array $options
+     * @return array|string|bool
      */
-    public function findTags($directory, $options = null) {
-        $lcOptions = (null === $options) ? [] : array_change_key_case((array)$options);
+    public function findTags(string $directory, array $options = []): array|string|bool {
+        $lcOptions = array_change_key_case($options);
 
         $fs = new FileSystem();
         $scanFiles = $fs->scanFiles($directory, FileSystem::INCLUDE_DIRECTORY_CHILDREN);
         if(false === $scanFiles) {
-            $this->saveError($fs->getMessages());
+            $this->saveMessage($fs->getMessages());
             return false;
         }
         if(! is_array($scanFiles) || empty($scanFiles)) {
-            $this->saveError("No files found in directory: '{$directory}'");
+            $this->saveMessage("No files found in directory: '{$directory}'");
             return false;
         }
 
-        $tagList = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+        $tagList = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         $includeFile = (isset($lcOptions['includefile']) && $lcOptions['includefile'])
                     || (isset($lcOptions['includefiles']) && $lcOptions['includefiles']);
         if(false === $this->_findTagsRecurse($scanFiles, $tagList, $includeFile)) {
@@ -689,7 +706,7 @@ class ComponentManager {
         return (array)$tagList;
     }
 
-    protected function _findTagsRecurse(array $sourceFiles, \ArrayObject $tagList, $includeFile = false) {
+    protected function _findTagsRecurse(array $sourceFiles, ArrayObject $tagList, bool $includeFile = false): bool {
         foreach($sourceFiles as $name => $file) {
             if(is_array($file)) {
                 $this->_findTagsRecurse($file, $tagList, $includeFile);
@@ -721,26 +738,26 @@ class ComponentManager {
     /**
      * Finds files containing both tag open braces '{{' and closing braces '}}'
      * @param string $directory Root directory under which to scan files.
-     * @return \ArrayObject Returns list of files.
+     * @return ArrayObject Returns list of files.
      */
-    public function findFilesWithTags($directory) {
+    public function findFilesWithTags(string $directory): ArrayObject|bool {
         $fs = new FileSystem();
         $scanFiles = $fs->scanFiles($directory, FileSystem::INCLUDE_DIRECTORY_CHILDREN);
         if(false === $scanFiles) {
-            $this->saveError($fs->getMessages());
+            $this->saveMessage($fs->getMessages());
             return false;
         }
         if(! is_array($scanFiles) || empty($scanFiles)) {
-            $this->saveError("No files found in directory: '{$directory}'");
+            $this->saveMessage("No files found in directory: '{$directory}'");
             return false;
         }
-        $list = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS) ;
+        $list = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS) ;
         if(false === $this->_findFilesWithTagsRecurse($scanFiles, $list)) {
             return false;
         }
         return $list;
     }
-    protected function _findFilesWithTagsRecurse(array $sourceFiles, \ArrayObject $list) {
+    protected function _findFilesWithTagsRecurse(array $sourceFiles, ArrayObject $list): bool {
         foreach($sourceFiles as $name => $file) {
             if(is_array($file)) {
                 $this->_findFilesWithTagsRecurse($file, $list);
@@ -762,21 +779,21 @@ class ComponentManager {
      * Returns the component properties.
      * @return array
      */
-    public function getProperties() {
+    public function getProperties(): array {
         return $this->_properties;
     }
 
     /**
      * Validate a component name.
-     * @param string  $name        Component name
-     * @param boolean $stripPrefix (optional) Remove leading 'com_' prefix if found.
-     * @throws \RuntimeException
+     * @param mixed $name        Component name
+     * @param bool  $stripPrefix (optional) Remove leading 'com_' prefix if found.
+     * @throws RuntimeException
      * @return string
      */
-    public function validateExtensionName($name, $stripPrefix = true) {
+    public function validateExtensionName(mixed $name, bool $stripPrefix = true): string|bool {
         if(! is_string($name)) {
             $var = Types::getVartype($name);
-            $this->saveError("Component name parameter '{$var}' is wrong type: expecting string");
+            $this->saveMessage("Component name parameter '{$var}' is wrong type: expecting string");
             return false;
         }
         $component = trim($name);
@@ -784,12 +801,12 @@ class ComponentManager {
             $component = $this->_removeNamePrefix($component);
         }
         if(empty($component)) {
-            $this->saveError("Cannot validate component name: component name missing/empty");
+            $this->saveMessage("Cannot validate component name: component name missing/empty");
             return false;
         }
         if(! preg_match('/^[a-zA-Z][a-zA-Z0-9_\-]+$/', $component)) {
             $var = Types::getVartype($component);
-            $this->saveError("Not a valid component name '{$var}'");
+            $this->saveMessage("Not a valid component name '{$var}'");
             return false;
         }
         return $component;
@@ -799,21 +816,21 @@ class ComponentManager {
     //const TEMPLATE_DIRECTORY = 'template';
     //const DEFAULT_TEMPLATE = 'component_template';
 
-    public function getComponentsDirectory() {
+    public function getComponentsDirectory(): string {
         // C:/inetpub/framework/joomlaComponents
         return $this->joinPath(APPLICATION_PATH, self::COMPONENTS_DIRECTORY);
     }
 
-    public function getComponentsTemplateDirectory() {
+    public function getComponentsTemplateDirectory(): string {
         // C:/inetpub/framework/joomlaComponents/component_template
         return $this->joinPath($this->getComponentsDirectory(), self::TEMPLATE_DIRECTORY, self::DEFAULT_TEMPLATE);
     }
 
-    public function getDefaultOutputDirectory() {
+    public function getDefaultOutputDirectory(): string {
         return $this->getComponentsDirectory();
     }
 
-    protected function _getJoomlaTutorialFiles() {
+    protected function _getJoomlaTutorialFiles(): mixed {
         return include $this->joinPath(__DIR__, 'JoomlaTutorialFiles.phtml');
     }
 }

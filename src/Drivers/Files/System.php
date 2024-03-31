@@ -72,10 +72,10 @@ class System extends FileDriver {
      * @throws FtpClientException
      * @throws Throwable
      */
-    public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = 0) {
+    public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = 0): mixed {
         if(! file_exists($directory) || ! is_dir($directory)) {
             $msg = "Can't get directory details; parameter is not a directory: {$directory}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         /* $info elements:
@@ -167,6 +167,18 @@ class System extends FileDriver {
     }
     
     /**
+     * Returns the resolved file path.
+     * @param string $path
+     * @return string|bool
+     */
+    public function getRealpath(string $path) : string|bool {
+        if(Types::isBlank($path)) {
+            return false;
+        }
+        return realpath(trim($path));
+    }
+    
+    /**
      * Returns the current directory.
      * @return boolean Success if the directory changed else false.
      */
@@ -204,14 +216,14 @@ class System extends FileDriver {
      * @return string|boolean Returns the file contents or false on error.
      * 
      * @throws \InvalidArgumentException
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function getFileContents(string $file, int $mode = 0) {
         // Validate parameters, types.
         if(! is_string($file) || ! strlen($trimmedFile = trim($file))) {
             $var = Types::getVartype($file, 32);
             $msg = "'\$file' parameter '{$var}' is invalid: expecting a string path to XML file or XML script";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             throw new \InvalidArgumentException($msg);
         }
         
@@ -226,17 +238,16 @@ class System extends FileDriver {
             else {
                 $msg = "The file '{$base}' not found in directory:\n{$dir}";
             }
-            $this->saveError($msg);
-            throw new \RuntimeException($msg);
+            $this->saveMessage($msg);
+            throw new RuntimeException($msg);
         }
 
         // Get the contents of the file.
         $contents = $this->_getFileContents($realpath);
         if(false === $contents) {
-            $errors = $this->getErrors();
+            $errors = $this->getMessages();
             $msg = count($errors) ? reset($errors) : 'unknown error getting file contents';
-            $this->saveError($msg);
-            throw new \RuntimeException($msg);
+            throw new RuntimeException($msg);
         }
         
         return $contents;
@@ -253,7 +264,7 @@ class System extends FileDriver {
     protected function _getFileContents($file, $limit = null) {
         if(! is_string($file) || ! file_exists($file) || ! is_file($file)) {
             $var = Types::getVartype($file);
-            $this->saveError("cannot get contents from file: invalid 'file' parameter. Expecting existing file: '{$var}'");
+            $this->saveMessage("cannot get contents from file: invalid 'file' parameter. Expecting existing file: '{$var}'");
             return false;
         }
         $fileData = $this->callFuncAndSavePhpError(
@@ -288,17 +299,17 @@ class System extends FileDriver {
         if(isset($msg)) {
             $var = Types::getVartype($$msg, 32);
             $msg = "'{$msg}' parameter '{$var}' is invalid: expecting a string file path";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             throw new \InvalidArgumentException($msg);
         }
         try {
             $this->_client->download($srcFile, $dstFile, $resume, $mode);
             return true;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
         
@@ -381,7 +392,7 @@ class System extends FileDriver {
         try {
             $fileIterator = new \DirectoryIterator($directory);
         } catch(Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
         foreach($fileIterator as $fileInfo) { 
@@ -434,7 +445,7 @@ class System extends FileDriver {
                 $fileIterator = new \DirectoryIterator($directory);
             }
         } catch(Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
 
@@ -472,7 +483,7 @@ class System extends FileDriver {
             }
             return true;
         } catch(Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }

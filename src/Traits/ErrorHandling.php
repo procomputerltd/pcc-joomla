@@ -22,7 +22,7 @@ trait ErrorHandling {
      * and prevent them from being displayed.
      *
      * @param function $callable     Callable function.
-     * @param boolean  $recordError  (optional) Record error messages using saveError().
+     * @param boolean  $recordError  (optional) Record error messages using saveMessage().
      * @param string   $defaultMsg   (optional) Default message when the message is missing/empty.
      * @param string   $msgPrefix    (optional) Error message prefix
      *
@@ -38,8 +38,8 @@ trait ErrorHandling {
                 $defaultMsg = __CLASS__ . "::" . __FUNCTION__ . '(): unknown error';
             }
             $this->lastError = $phpErrorHandler->getErrorMsg($defaultMsg, $msgPrefix);
-            if(method_exists($this, 'saveError')) {
-                $this->saveError($msg);
+            if(method_exists($this, 'saveMessage')) {
+                $this->saveMessage($msg);
             }
         }
         return $res;

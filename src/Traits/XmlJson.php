@@ -12,6 +12,7 @@ namespace Procomputer\Joomla\Traits;
  * for more details.
  */
 use Procomputer\Pcclib\Types;
+use stdClass, RuntimeException;
 
 trait XmlJson {
     
@@ -28,7 +29,7 @@ trait XmlJson {
          */
         // $version = '1.0', $encoding = 'utf-8'
         $doc = new \DOMDocument('1.0', 'utf-8');
-        $res = new \stdClass();
+        $res = new stdClass();
         $res->fail = false;
         $res->error = '';
         $errorHandler = set_error_handler(function($errno, $errstr, $errfile, $errline) use($res) {
@@ -154,7 +155,7 @@ trait XmlJson {
      * Converts an XML string to an object.
      * @param string $xml
      * @return stdClass
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function xmlToObject($xml) {
         $json = $this->jsonEncode($xml /*, JSON_PRETTY_PRINT */);
@@ -171,7 +172,7 @@ trait XmlJson {
     /**
      * Converts recursively an array to stdClass objects.
      * @param array|\Traversable $traversable An array or iterable\traversable collection.
-     * @return \stdClass
+     * @return stdClass
      */
     public function arrayToObject($traversable) {
         if(! is_array($traversable) && ! $traversable instanceof \Traversable) {
@@ -181,7 +182,7 @@ trait XmlJson {
             $this->lastXmlJsonError = $msg;
             return false;
         }
-        $obj = new \stdClass;
+        $obj = new stdClass;
         foreach($traversable as $k => $v) {
             if(strlen($k)) {
                 if(is_array($v) || $v instanceof \Traversable) {

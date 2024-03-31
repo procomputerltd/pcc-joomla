@@ -2,12 +2,14 @@
 namespace Procomputer\Joomla;
 
 use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\Messages\Messages;
 use Procomputer\Pcclib\PhpErrorHandler;
 use Procomputer\Joomla\Drivers\Files\FileDriver;
+use ArrayObject;
 
 class Languages {
 
-    use Traits\Messages;
+    use Messages;
     use Traits\Files;
     
     /**
@@ -80,24 +82,24 @@ class Languages {
         // Get the component extension in the Joomla! installation and parse the XML manifest file.
         $extension = $this->_installation->getExtension($extensionName);
         if(false === $extension) {
-            $this->saveError($this->_installation->getErrors());
+            $this->saveMessage($this->_installation->getMessages());
             return false;
         }
         $manifest = $extension->getManifest();
         if(false === $manifest) {
-            $this->saveError($extension->getErrors());
+            $this->saveMessage($extension->getMessages());
             return false;
         }
         
         $languageFiles = $this->_parseLanguageFiles($manifest);
         if(false === $languageFiles) {
-            $this->saveError($manifest->getErrors());
+            $this->saveMessage($manifest->getMessages());
             return false;
         }
         
         $codeFiles = $extension->getCodeFiles();
         if(false === $codeFiles) {
-            $this->saveError($extension->getErrors());
+            $this->saveMessage($extension->getMessages());
             return false;
         }
                 
@@ -111,30 +113,30 @@ class Languages {
      *
      * @param string $extensionName The name of the Joomla extension for which to find language constants.
      *
-     * @return \ArrayObject|boolean
+     * @return ArrayObject|boolean
      */
     public function findOrphanedLanguageConstants($extensionName) {
         // Get the component extension in the Joomla! installation and parse the XML manifest file.
         $extension = $this->_installation->getExtension($extensionName);
         if(false === $extension) {
-            $this->saveError($this->_installation->getErrors());
+            $this->saveMessage($this->_installation->getMessages());
             return false;
         }
         $manifest = $extension->getManifest();
         if(false === $manifest) {
-            $this->saveError($extension->getErrors());
+            $this->saveMessage($extension->getMessages());
             return false;
         }
         
         $languageFiles = $this->_parseLanguageFiles($manifest);
         if(false === $languageFiles) {
-            $this->saveError($manifest->getErrors());
+            $this->saveMessage($manifest->getMessages());
             return false;
         }
         
         $codeFiles = $extension->getCodeFiles();
         if(false === $codeFiles) {
-            $this->saveError($extension->getErrors());
+            $this->saveMessage($extension->getMessages());
             return false;
         }
                 
@@ -145,14 +147,14 @@ class Languages {
      * 
      * @param type $languageFiles
      * @param type $codeFiles
-     * @return \ArrayObject|boolean
+     * @return ArrayObject|boolean
      */
-    protected function _findOrphanedLanguageConstants(\ArrayObject $languageFiles, \ArrayObject $codeFiles, $extension) {
+    protected function _findOrphanedLanguageConstants(ArrayObject $languageFiles, ArrayObject $codeFiles, $extension) {
         $extensionName = strtoupper(($extension instanceof Extension) ? $extension->element : $extension);
         $this->_organizeLanguageConstants($languageFiles, $extensionName);
         
         $m = [];
-        $orphanedConstants = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+        $orphanedConstants = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         foreach($codeFiles as $location => $fileList) {
             if(empty($fileList)) {
                 $this->saveMessage("WARNING: \$codeFiles['{$location}'] contains no files");
@@ -210,7 +212,7 @@ class Languages {
      * @param type $codeFiles
      * @return boolean
      */
-    protected function _findUnusedLanguageConstants(\ArrayObject $languageFiles, \ArrayObject $codeFiles, $extension) {
+    protected function _findUnusedLanguageConstants(ArrayObject $languageFiles, ArrayObject $codeFiles, $extension) {
         $extensionName = strtoupper(($extension instanceof Extension) ? $extension->element : $extension);
         $this->_organizeLanguageConstants($languageFiles, $extensionName);
         
@@ -240,7 +242,7 @@ class Languages {
                         });
                         if(false === $res) {
                             $var = Types::getVartype($file);
-                            $this->saveError($phpErrorHandler->getErrorMsg("cannot match language constants to file contents in file: '{$var}'", 'preg_match_all() failed'));
+                            $this->saveMessage($phpErrorHandler->getErrorMsg("cannot match language constants to file contents in file: '{$var}'", 'preg_match_all() failed'));
                             return false;
                         }
                         elseif($res > 0) {
@@ -273,7 +275,7 @@ class Languages {
      * 
      * @param type $languageFiles
      */
-    protected function _organizeLanguageConstants(\ArrayObject $languageFiles, $extensionName) {
+    protected function _organizeLanguageConstants(ArrayObject $languageFiles, $extensionName) {
         // Remove the constant having the name of the extension, e.g. 'com_banners', as that constant is used by the system.
         foreach($languageFiles as $location => $files) {
             if('admin' !== $location) {
@@ -299,21 +301,21 @@ class Languages {
     /**
      * Get a list of .INI language files listed in the component XML manifest.
      * @param Manifest $manifest
-     * @return \ArrayObject|boolean
+     * @return ArrayObject|boolean
      */
     protected function _parseLanguageFiles(Manifest $manifest) {
         $langFiles = $manifest->getLanguageFiles();
         if(false === $langFiles) {
             return false;
         }
-        $return = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+        $return = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         foreach($langFiles as $location => $properties) {
             $folder = $this->joinPath($this->_installation->webRoot, ('site' === $location) ? '' : 'administrator');
             $fileData = [];
             foreach($properties['files'] as $key => $filename) {
                 $path = $this->joinPath($folder, $filename);
                 if(! $this->_fileDriver->fileExists($path)) {
-                    $this->saveError("Cannot parse .ini file: file not found: {$path}");
+                    $this->saveMessage("Cannot parse .ini file: file not found: {$path}");
                     return false;
                 }
                 $data = $this->_readIniFile($path);
@@ -365,7 +367,7 @@ class Languages {
             return file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         });
         if(false === $fileData) {
-            $this->saveError($phpErrorHandler->getErrorMsg('file read error', 'cannot read language file'));
+            $this->saveMessage($phpErrorHandler->getErrorMsg('file read error', 'cannot read language file'));
             return false;
         }
         $lineCount = 1;
@@ -377,7 +379,7 @@ class Languages {
                     return parse_ini_string($line);
                 });
                 if(false === $values) {
-                    $this->saveError($phpErrorHandler->getErrorMsg("cannot read language file", "syntax error in line {$lineCount}"));
+                    $this->saveMessage($phpErrorHandler->getErrorMsg("cannot read language file", "syntax error in line {$lineCount}"));
                     return false;
                 }
                 foreach($values as $const => $value) {

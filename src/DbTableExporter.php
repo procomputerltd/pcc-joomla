@@ -22,7 +22,7 @@ use Procomputer\Pcclib\Types;
 
 class DbTableExporter {
     
-    use \Procomputer\Joomla\Traits\Messages;
+    use \Procomputer\Pcclib\Messages\Messages;
     
     /**
      * 
@@ -30,7 +30,7 @@ class DbTableExporter {
      * @param array        $dbTableNames
      * @return array
      */
-    public function export(Installation $installation, array $dbTableNames) {
+    public function export(Installation $installation, array $dbTableNames): array {
         /**
          * For debugging: write SQL string statements to local file.
          * Call with false to purge the file.
@@ -48,10 +48,10 @@ class DbTableExporter {
      * 
      * @param Installation $installation
      * @param array $dbTableNames
-     * @return array|boolean
+     * @return array
      * @throws RuntimeException
      */
-    protected function getCreateTableSql(Installation $installation, array $dbTableNames){
+    protected function getCreateTableSql(Installation $installation, array $dbTableNames): array {
         $dbAdapter = $installation->getDbAdapter();
         if(! is_object($dbAdapter)) {
             $msg = "Cannot create TABLE sql file: no database adapter is specified in the Joomla Installation object.";
@@ -66,7 +66,7 @@ class DbTableExporter {
             $schemaTable = $schema . '.' . $dboTableName;
             if(! $this->_tableExists($dbAdapter, $schemaTable)) {
                 $msg = "WARNING: database table not found: '{$schemaTable}'";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
             }
             else {
                 $sqlStatement = "SHOW CREATE TABLE {$schemaTable}";
@@ -124,11 +124,11 @@ class DbTableExporter {
     /**
      * 
      * @param Installation $installation
-     * @param array              $dbTableNames
-     * @return string
+     * @param array        $dbTableNames
+     * @return array
      * @throws RuntimeException
      */
-    protected function getInsertStatements(Installation $installation, array $dbTableNames){
+    protected function getInsertStatements(Installation $installation, array $dbTableNames): array {
         $dbAdapter = $installation->getDbAdapter();
         if(! is_object($dbAdapter)) {
             $msg = "Cannot create TABLE sql file: no database adapter is specified in the Joomla Installation object.";
@@ -146,7 +146,7 @@ class DbTableExporter {
             $schemaTable =  $schema . '.' . $dboTableName;
             if(! $this->_tableExists($dbAdapter, $schemaTable)) {
                 $msg = "WARNING: database table not found: '{$schemaTable}'";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
             }
             else {
                 $sql = "SELECT * FROM {$schemaTable}";
@@ -178,10 +178,10 @@ class DbTableExporter {
         return $return;
     }
     
-    protected function _tableExists($dbAdapter, $schemaTable) {
+    protected function _tableExists($dbAdapter, string $schemaTable): bool {
         $sqlStatement = "SHOW CREATE TABLE {$schemaTable}";
         try {
-            $resultSet = $this->_fetchResultSet($dbAdapter, $sqlStatement);
+            $this->_fetchResultSet($dbAdapter, $sqlStatement);
             return true;
         }
         catch(\Throwable $ex) {
@@ -189,7 +189,7 @@ class DbTableExporter {
         }
     }
     
-    protected function getDropStatements(Installation $installation, array $dbTableNames) {
+    protected function getDropStatements(Installation $installation, array $dbTableNames): array {
         $tablePrefix = $installation->config->dbprefix;
         $dropStatements = [];
         foreach($dbTableNames as $tableName) {
@@ -200,14 +200,14 @@ class DbTableExporter {
         return $dropStatements;
     }
     
-    protected function _replaceDbTablePrefix($prefix, $data, $insertJoomlaPrefix = false) {
+    protected function _replaceDbTablePrefix($prefix, $data, $insertJoomlaPrefix = false): string {
         if($insertJoomlaPrefix) {
             return preg_replace("/\W({$prefix})\w/i", '#__', $data);
         }
         return preg_replace('/^#__(.*)$/', $prefix . '$1', $data);
     }
     
-    protected function _fetchResultSet($dbAdapter, $sqlStatement) {
+    protected function _fetchResultSet($dbAdapter, $sqlStatement): mixed {
         $stmt = $dbAdapter->createStatement($sqlStatement);
         $stmt->prepare();
         /* @var $resultSet \Laminas\Db\Adapter\Driver\Pdo\Result */
@@ -217,14 +217,14 @@ class DbTableExporter {
 
     /**
      * For debugging, write SQL statement to a local file.
-     * @param bool|string|array $text Data to write. If false the file is purged.
+     * @param bool|string|array $data Data to write. If false the file is purged.
      */
-    protected function _debugWriteSqlToFile($data) {
+    protected function _debugWriteSqlToFile(bool|string|array $data): bool {
         if(defined('APPLICATION_LOCAL_SERVER') ? (bool)intval(APPLICATION_LOCAL_SERVER) : false) {
             $file = 'C:\inetpub\laminas\public_html\scratch.sql';
             if(false === $data || null === $data) {
                 fclose(fopen($file, 'w'));                
-                return;
+                return true;
             }
             if(is_array($data)) {
                 $data = implode("\n", $data);
@@ -232,5 +232,6 @@ class DbTableExporter {
             $data .= "\n\n";
             file_put_contents($file, $data, FILE_APPEND);
         }    
+        return true;
     }
 }

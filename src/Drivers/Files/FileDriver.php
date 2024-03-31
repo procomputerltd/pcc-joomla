@@ -11,11 +11,11 @@ namespace Procomputer\Joomla\Drivers\Files;
  * A PARTICULAR PURPOSE. See the GNU General Public License 
  * for more details.
  */
-use Closure;
+use Closure, ArrayObject;
 
 abstract class FileDriver {
     
-    use \Procomputer\Joomla\Traits\Messages;
+    use \Procomputer\Pcclib\Messages\Messages;
     use \Procomputer\Joomla\Traits\ErrorHandling;
 
     public $host     = '';
@@ -69,7 +69,7 @@ abstract class FileDriver {
      * @throws FtpClientException
      * @throws Throwable
      */
-    abstract public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = 0) ;
+    abstract public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = 0): mixed ;
     
     /**
      * Returns true when the path is a file.
@@ -108,7 +108,7 @@ abstract class FileDriver {
     /**
      * Get folders in a file path.
      * @param string $path Path from which to get folders.
-     * @return \ArrayObject
+     * @return ArrayObject
      * 
      */
     abstract public function getFolders(string $path, bool $ignoreDots = true, $sort = null);

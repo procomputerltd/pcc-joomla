@@ -15,13 +15,17 @@
 
 namespace Procomputer\Joomla;
 
+use Procomputer\Pcclib\Messages\Messages;
+use Procomputer\Joomla\Drivers\Files\FileDriver;
+use ArrayObject, RuntimeException;
+
 /**
  * Describes a Joomla! Extension and manifest whos source is an XML file normally
  * stored in the Joomla! admin folder "administrator/components/com_extension_name"
  */
 class Extension  {
     
-    use Traits\Messages;
+    use Messages;
     use Traits\Files;
 
     protected $_allowedFileTypes = ['php', 'phtml', 'xml', 'sql'];
@@ -54,12 +58,12 @@ class Extension  {
     
     /**
      * Constructor.
-     * @param string $elementName      An Joomla! element name e.g. 'com_banners'
-     * @param string $fileDriver       An XML file associated with a Joomla! extension.
-     * @param string $manifestContents (optional) An XML file associated with a Joomla! extension.
-     * @throws \RuntimeException|\InvalidArgumentException
+     * @param string     $elementName      An Joomla! element name e.g. 'com_banners'
+     * @param FileDriver $fileDriver       An 
+     * @param string     $manifestContents (optional) An XML file associated with a Joomla! extension.
+     * @throws RuntimeException|\InvalidArgumentException
      */
-    public function __construct(string $elementName, string $xmlPath, $fileDriver, string $manifestContents = null) {
+    public function __construct(string $elementName, string $xmlPath, FileDriver $fileDriver, string $manifestContents = null) {
         $this->element = $elementName;
         $this->_fileDriver = $fileDriver;
         $this->_xmlPath = $xmlPath;
@@ -74,7 +78,7 @@ class Extension  {
      */
     public function getManifest() {
         if(null === $this->_manifest) {
-            throw new \RuntimeException($this->_missingData);
+            throw new RuntimeException($this->_missingData);
         }
         return $this->_manifest;
     }
@@ -92,14 +96,13 @@ class Extension  {
      * @param string $manifestContents
      * @param string $xmlpath
      * @return boolean|\Procomputer\Joomla\Manifest
-
      */
     public function parseManifest(string $manifestContents, string $xmlpath) {
         $this->_manifest = null;
         $manifest = new Manifest();
         $res = $manifest->parseManifest($manifestContents, $xmlpath);
         if(false === $res) {
-            $this->saveError($manifest->getErrors());
+            $this->saveMessage($manifest->getMessages());
             return false;
         }
         $this->_manifest = $manifest;
@@ -168,11 +171,11 @@ class Extension  {
         }
         if(empty($absPath)) {
             $msg = "Cannot get code files: the installation 'administrator' base directory cannot be resolved.";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         
-        $storage = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+        $storage = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         // NOTE:
         //   Be sure to include the manifest XML file whose name (e.g. pccoptionselector.xml) 
         //   may not be listed in that manifest file.
@@ -196,7 +199,7 @@ class Extension  {
                 $storage['admin'][] = $this->joinOsPath($componentDir, $node);
             }
             else {
-                $attribs = $this->manifest->extractAttributes($node, ['folder' => '']);
+                $attribs = $manifest->extractAttributes($node, ['folder' => '']);
                 if(false === $attribs) {
                     return false;
                 }
@@ -258,5 +261,4 @@ class Extension  {
     public function getLanguageFiles() {
         return $this->getManifest()->getLanguageFiles();
     }
-    
 }

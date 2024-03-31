@@ -12,26 +12,42 @@
  */
 namespace Procomputer\Joomla;
 
+/**
+ * A basic runtime cacher. When an object of this class if destroyed the cache contents are destroyed.
+ */
 class Cacher {
     private $_cache = [];
     
-	public function createKey($values) {
+    /**
+     * Create an md5 cache key.
+     * @param array|string $values
+     * @return string
+     */
+	public function createKey(array|string $values): string {
         return md5(is_array($values) ? implode('_', $values) : (string)$values);
 	}
 
-	public function get(string $key, $default = null) {
+    /**
+     * Returns a cache value if it exists else $default.
+     * @param string $key
+     * @param type $default
+     * @return mixed
+     */
+	public function get(string $key, $default = null): mixed {
         if(isset($this->_cache[$key])) {
             return $this->_cache[$key];
         }
         return $default;
 	}
 
-	public function set(string $key, $content) {
+    /**
+     * Sets a cache value.
+     * @param string $key
+     * @param mixed  $content
+     * @return $this
+     */
+	public function set(string $key, mixed $content) {
         $this->_cache[$key] = $content;
-        return $this;
-	}
-
-	public function setFromFile(string $key, string $file) {
         return $this;
 	}
 }

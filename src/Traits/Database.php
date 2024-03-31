@@ -12,17 +12,20 @@
  */
 namespace Procomputer\Joomla\Traits;
 
+use Procomputer\Pcclib\Messages\Messages;
+use RuntimeException;
+
 trait Database {
     
+    use Messages;
+    
     protected $_dbAdapter = null;
-
-    public $lastDatabaseError = '';
     
     /**
      * Reads extension data from the Joomla! database.
      * @param stdClass $joomlaConfig
      * @return boolean|array
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     protected function dbReadExtensionData($joomlaConfig) {
         /*
@@ -156,7 +159,7 @@ trait Database {
             // Laminas\Db\Adapter\Exception\InvalidQueryException
             // Statement could not be executed (42S02 - 1146 - Table 'procompu_joomla.josmg_extensionsx' doesn't exist)
             $msg = $ex->getMessage();
-            $this->_saveError($msg);
+            $this->_saveMessage($msg);
             return false;
         }
         
@@ -166,7 +169,7 @@ trait Database {
                 if(isset($row[$key]) && ! empty($row[$key])) {
                     $value = $this->jsonDecode($row[$key], true);
                     if(false === $value) {
-                        $this->_saveError($this->lastXmlJsonError);
+                        $this->_saveMessage($this->lastXmlJsonError);
                         return false;
                     }
                     $row[$key] = $value;
@@ -185,7 +188,7 @@ trait Database {
                 break;
             default:
                 $var = Types::getVartype($row['type']);
-                throw new \RuntimeException("Unknown component type '{$var}' in table {$schema}.{$tableName}");
+                throw new RuntimeException("Unknown component type '{$var}' in table {$schema}.{$tableName}");
             }
             $return[$index][] = (array)$row;
         }
@@ -215,18 +218,5 @@ trait Database {
      */
     public function haveDatabaseAdapter() {
         return is_object($this->_dbAdapter);
-    }
-    
-    /**
-     * Saves an error message.
-     * @param string $errorMsg
-     * @return $this
-     */
-    protected function _saveError($errorMsg) {
-        $this->lastDatabaseError = $errorMsg;
-        if(method_exists($this, 'saveError')) {
-            $this->saveError($errorMsg);
-        }
-        return $this;
     }
 }

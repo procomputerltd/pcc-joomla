@@ -16,15 +16,16 @@ for more details.
 */
 namespace Procomputer\Joomla;
 
-use ArrayObject, Throwable;
+use ArrayObject, Throwable, RuntimeException;
 
 use Procomputer\Joomla\Drivers\Files\FileDriver;
 
 use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\Messages\Messages;
 
 class Installations {
     
-    use Traits\Messages;
+    use Messages;
     use Traits\Environment;
     // use Traits\ErrorHandling;
     use Traits\Files;
@@ -55,19 +56,19 @@ class Installations {
     
     /**
      * Constructor
-     * @param string     $webRoot    Root directory under which Joomla install exist.
      * @param FileDriver $fileDriver The file driver object.
+     * @param string     $webRoot    (optional) Root local directory under which Joomla install exist.
      * @param mixed      $dbAdapter  (optional) DB adapter.
      * @return boolean
      */
-    public function __construct(string $webRoot, FileDriver $fileDriver, $dbAdapter = null) {
+    public function __construct(FileDriver $fileDriver, string $webRoot = '/', $dbAdapter = null) {
         $root = trim($webRoot, " \n\r\t\v\x00;");
         if(! strlen($root)) {
             $msg = "Missing web root parameter";
-            throw new \RuntimeException($msg);
+            throw new RuntimeException($msg);
         }
-        $this->_webRoot = preg_split('/[\\n\\r;]+/', $root);
         $this->_fileDriver = $fileDriver;
+        $this->_webRoot = preg_split('/[\\n\\r;]+/', $root);
         $this->_dbAdapter = $dbAdapter;
     }
     
@@ -94,9 +95,9 @@ class Installations {
      *   Wnd: C:/inetpub/procomputer/public_html
      *   Nix: /home/procompu/public_html
      * 
-     * @return array
+     * @return array|bool
      */
-    public function getNameList(string $sort = null) {
+    public function getNameList(string $sort = ''): array|bool {
         $installs = $this->getInstallations();
         if(false === $installs) {
             return false;
@@ -145,7 +146,7 @@ class Installations {
         foreach($this->_webRoot as $dir) {
             $details = $driver->getDirectoryDetails($dir);
             if(false === $details) {
-                $this->saveError($driver->getErrors());
+                $this->saveMessage($driver->getMessages());
                 return false;
             }
             $items[$dir] = $details;
@@ -209,13 +210,13 @@ class Installations {
      * 
      * @param string      $folder
      * @param ArrayObject $hashes
-     * @return array|boolean
+     * @return array|bool|null
      */
-    protected function _findConfiguration($folder, ArrayObject $hashes) {
+    protected function _findConfiguration(string $folder, ArrayObject $hashes): mixed {
         $driver = $this->_fileDriver;
         $folders = $driver->getDirectoryDetails($folder);
         if(false === $folders) {
-            $this->saveError($driver->getErrors());
+            $this->saveMessage($driver->getMessages());
             return false;
         }
         if(! count($folders)) {
@@ -272,35 +273,35 @@ class Installations {
      * @param string $configFile The full path of the configuration file.
      * @return array|boolean Returns the Joomla config array or FALSE if not found.
      */
-    protected function _loadJoomlaConfig($configFile) {
+    protected function _loadJoomlaConfig(string $configFile): mixed {
         if(! $this->_fileDriver->fileExists($configFile) || ! $this->_fileDriver->isFile($configFile)) {
             return null;
         }
         $newClass = "JConfig_" . md5($configFile);
         $contents = $this->_fileDriver->getFileContents($configFile);
         if(false === $contents) {
-            $this->saveError($this->_fileDriver->getErrors());
+            $this->saveMessage($this->_fileDriver->getMessages());
             return false;
         }
         $phpCode = str_replace("class JConfig", "class $newClass", $contents);
         try {
             $newFile = $this->_createTemporaryFile();
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
         try {
             $res = $this->putFileContents($newFile, $phpCode);
             include $newFile;
             if(! class_exists($newClass, false)) {
-                $this->saveError("Cannot create $newClass for configuration file $configFile");
+                $this->saveMessage("Cannot create $newClass for configuration file $configFile");
                 // log/sav  e/report error
                 return false;
             }
             $config = new $newClass;
         } catch (Throwable $exc) {
             $msg = "Cannot create $newClass for for configuration file $configFile";
-            $this->saveError($msg . ': ' . $exc->getMessage());
+            $this->saveMessage($msg . ': ' . $exc->getMessage());
             return false;
         } finally {
             unlink($newFile);
@@ -326,8 +327,7 @@ class Installations {
      * 
      * @param string $rootPath
      */
-    protected function _getJoomlaVersion(string $rootPath) {
-        // F:\Business\Customers\NorthWing\public_html\libraries\src\Version.php        
+    protected function _getJoomlaVersion(string $rootPath): string|bool {
         $path = $rootPath . '\libraries\src\Version.php';
         if(! file_exists($path)) {
             return false;
@@ -365,7 +365,7 @@ class Installations {
      * @param string|array  $sort (optional) Sort/prioritize on this string key.
      * @return type
      */
-    protected function _sort($data, $sort) {
+    protected function _sort(array $data, string $sort) {
         if(Types::isBlank($sort)) {
             return $data;
         }

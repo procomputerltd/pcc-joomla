@@ -31,12 +31,12 @@ class PackageModule extends PackageCommon {
             'authorEmail',
             'authorUrl',
             'version',
-            'description',
             // == Optional:
+            // languages
+            // description
             // install
             // uninstall
             // update
-            // languages
             // media
         ];
         $missing = $this->checkRequiredElementsExist($manifestElements);
@@ -65,14 +65,14 @@ class PackageModule extends PackageCommon {
         // The manifest sections to scan for files to copy to the archive.
         $sections = [
             'files' => true,       // _processSectionFiles
-            'languages' => true,   // _processSectionLanguages
+            'languages' => false,   // _processSectionLanguages
             'media' => false       // _processSectionMedia
             ];
         foreach($sections as $tag => $required) {
             $node = $this->manifest->getProperty($tag);
             if(null === $node) {
-                $msg = "required manifest XML '{$tag}' data is empty";
-                $this->_packageMessage($msg, true);
+                $msg = ($required ? 'required ' : '') . "'{$tag}' tag is missing";
+                $this->_packageMessage($msg, $required ? self::NAMESPACE_ERROR : self::NAMESPACE_WARNING);
                 if($required) {
                     return false;
                 }

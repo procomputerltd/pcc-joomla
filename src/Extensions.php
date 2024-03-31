@@ -16,11 +16,13 @@
 namespace Procomputer\Joomla;
 
 use Procomputer\Joomla\Drivers\Files\FileDriver;
+use Procomputer\Pcclib\Messages\Messages;
 use Procomputer\Pcclib\Types;
+use ArrayObject;
 
 class Extensions {
 
-    use Traits\Messages;
+    use Messages;
     use Traits\Database;
     use Traits\XmlJson;
     use Traits\Files;
@@ -64,7 +66,7 @@ class Extensions {
      * @param FileDriver $fileDriver
      * @param object     $dbAdapter
      */
-    public function __construct($absPath, $joomlaConfig, FileDriver $fileDriver, $dbAdapter = null) {
+    public function __construct($absPath, $joomlaConfig, FileDriver $fileDriver, mixed $dbAdapter = null) {
         $this->_absPath = $absPath;
         $this->_joomlaConfig = $joomlaConfig;
         $this->_fileDriver = $fileDriver;
@@ -77,9 +79,9 @@ class Extensions {
     /**
      * Returns a list of all Joomla! extensions.
      * @param array $options (optional) Process options.
-     * @return array
+     * @return ArrayObject|bool
      */
-    public function getExtensions($options = null) {
+    public function getExtensions(array $options = []): ArrayObject|bool {
         if(null === $this->_extensions) {
             $extensions = $this->_getExtensions($options);
             if(false=== $extensions) {
@@ -93,9 +95,9 @@ class Extensions {
     /**
      * Returns the list of extension names for this installation.
      * @param array $options (optional) Process options.
-     * @return array
+     * @return array|bool
      */
-    public function getExtensionGroups($options = null) {
+    public function getExtensionGroups(array $options = []): array|bool {
         $lcOptions = $this->_extendOptions($options);
         $extensions = $this->getExtensions($lcOptions);
         if(false === $extensions) {
@@ -120,12 +122,12 @@ class Extensions {
      * @param string $spec The extension to return.
      * @return Extension|boolean
      */
-    public function get($spec) {
+    public function get($spec): Extension|bool {
         $extensionElement = is_array($spec) ? (isset($spec['element']) ? $spec['element'] : null) : $spec;
         if(! is_string($extensionElement) || Types::isBlank($extensionElement)) {
             $var = Types::getVartype($extensionElement);
             $msg = "Joomla! extension invalid: '{$var}'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         $lowerName = strtolower($extensionElement);
@@ -147,48 +149,48 @@ class Extensions {
                         $manifestContents = false;
                     }
                     if(false === $manifestContents) {
-                        $this->saveError($this->_fileDriver->getErrors());
+                        $this->saveMessage($this->_fileDriver->getMessages());
                         return false;
                     }
-                    $Extension = new Extension($extensionElement, $xmlpath, $this->_fileDriver);
-                    if(false === $Extension->parseManifest($manifestContents, $xmlpath)) {
-                        $this->saveError($Extension->getErrors());
+                    $extension = new Extension($extensionElement, $xmlpath, $this->_fileDriver);
+                    if(false === $extension->parseManifest($manifestContents, $xmlpath)) {
+                        $this->saveMessage($extension->getMessages());
                         return false;
                     }
-                    return $Extension;
+                    return $extension;
                 }
             }
         }
         $var = Types::getVartype($spec);
         $msg = "Joomla! extension not found: '{$var}'";
-        $this->saveError($msg);
+        $this->saveMessage($msg);
         return false;
     }
     
     /**
      * Finds Joomla! extensions for the specified Joomla! installation.
      * @param array $options (optional) Process options.
-     * @return array
+     * @return ArrayObject
      */
-    protected function _getExtensions($options = null) {
+    protected function _getExtensions(array $options = []): ArrayObject {
         // $lcOptions = $this->_extendOptions($options);
         if(null === $this->_extensionData) {
             if($this->haveDatabaseAdapter() && false) {
-                $extensions = $this->_getExtensionDataFromDatabase($options = null);
+                $extensions = $this->_getExtensionDataFromDatabase($options);
             }
             else {
-                $extensions = $this->_getExtensionDataFromAdminFolder($options = null);
+                $extensions = $this->_getExtensionDataFromAdminFolder($options);
             }
-            if($this->_extensionData = $extensions);
+            $this->_extensionData = $extensions;
         }
         return $this->_extensionData;
     }
 
     /**
      * 
-     * @return boolean|string
+     * @return array|bool
      */
-    protected function _getExtensionDataFromDatabase($options = null) {
+    protected function _getExtensionDataFromDatabase(array $options = []): array|bool {
         if(! $this->haveDatabaseAdapter()) {
             return false;
         }
@@ -263,7 +265,7 @@ class Extensions {
     /**
      * 
      */
-    protected function _getExtensionDataFromAdminFolder($options = null) {
+    protected function _getExtensionDataFromAdminFolder(array $options = []): ArrayObject|bool {
         $joomlaTypes = [
             'component' => [
                 'prefix' => 'com_',
@@ -285,18 +287,18 @@ class Extensions {
             ]
         ];
         $driver = $this->_fileDriver;
-        $extensions = new \ArrayObject();
+        $extensions = new ArrayObject();
         foreach($joomlaTypes as $type => $properties) {
             $componentPath = $properties['path'];
             if(! $driver->isDirectory($componentPath)) {
                 $msg = "WARNING: Joomla {$type}s directory not found in path {$componentPath}";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 continue;
             }
             if($properties['folders']) {
                 $folders = $driver->getFolders($componentPath);
                 if(false === $folders) {
-                    $this->saveError($driver->getErrors());
+                    $this->saveMessage($driver->getMessages());
                     return false;
                 }
                 foreach($folders as $path) {
@@ -323,7 +325,7 @@ class Extensions {
             else {
                 $files = $driver->listDirectory($componentPath, $driver->FILE_TYPE);
                 if(false === $files) {
-                    $this->saveError($driver->getErrors());
+                    $this->saveMessage($driver->getMessages());
                     return false;
                 }
                 foreach($files as $path) {
@@ -350,15 +352,12 @@ class Extensions {
      * @param array $options
      * @return array
      */
-    protected function _extendOptions($options) {
+    protected function _extendOptions(array $options): array {
         $defaults = [
             'name' => null,
             'type' => null,
             'filter' => self::FILTER_JOOMLA
         ];
-        if(! is_array($options)) {
-            return $defaults;
-        }
         $return = array_merge($defaults, array_change_key_case($options));
         return $return;
     }

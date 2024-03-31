@@ -90,10 +90,10 @@ class Remote extends FileDriver {
             $connection->open();
             $this->_connection = $connection;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
         try {
@@ -104,10 +104,10 @@ class Remote extends FileDriver {
             
             return true;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -171,10 +171,10 @@ class Remote extends FileDriver {
                 try {
                     return call_user_func_array([$this->_client, $method], $args);
                 } catch (FtpClientException $exc) {
-                    $this->saveError($exc->getMessage());
+                    $this->saveMessage($exc->getMessage());
                     return false;
                 } catch (Throwable $exc) {
-                    $this->saveError($exc->getMessage());
+                    $this->saveMessage($exc->getMessage());
                     return false;
                 }
             }
@@ -195,7 +195,7 @@ class Remote extends FileDriver {
      * @throws FtpClientException
      * @throws Throwable
      */
-    public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = null) {
+    public function getDirectoryDetails(string $directory, bool $recursive = false, bool $ignoreDots = true, int $filter = null): mixed {
         if(! $this->_client) {
             throw new RuntimeException("No connection: use open() method.");
         }
@@ -221,10 +221,10 @@ class Remote extends FileDriver {
             $this->_cache->set($cacheKey, $dirDetails);
             return $dirDetails;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -268,10 +268,10 @@ class Remote extends FileDriver {
         try {
             return $this->_client->getCount($directory);
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -288,10 +288,10 @@ class Remote extends FileDriver {
         try {
             return $this->_client->getCurrentDir();
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -351,10 +351,10 @@ class Remote extends FileDriver {
             $this->_cache->set($cacheKey, $list);
             return $list;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -374,10 +374,10 @@ class Remote extends FileDriver {
         try {
             return $this->_client->isExists($path);
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -397,10 +397,10 @@ class Remote extends FileDriver {
         try {
             return $this->_client->isFile($path);
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -420,12 +420,21 @@ class Remote extends FileDriver {
         try {
             return $this->_client->isDir($path);
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Returns the resolved file path.
+     * @param string $path
+     * @return string|bool
+     */
+    public function getRealpath(string $path) : string|bool {
+        return trim($path);
     }
     
     /**
@@ -441,10 +450,10 @@ class Remote extends FileDriver {
             $this->_client->changeDir($path);
             return true;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -468,7 +477,7 @@ class Remote extends FileDriver {
         if(! strlen($srcFile = trim($file))) {
             $var = Types::getVartype($file, 32);
             $msg = "'\$file' parameter '{$var}' is invalid: expecting a string path to XML file or XML script";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             // Ignore $throwException value.
             throw new InvalidArgumentException($msg);
         }
@@ -482,10 +491,10 @@ class Remote extends FileDriver {
             $this->_cache->set($cacheKey, $contents);
             return $contents;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -517,7 +526,7 @@ class Remote extends FileDriver {
         if(isset($msg)) {
             $var = Types::getVartype($$msg, 32);
             $msg = "'{$msg}' parameter '{$var}' is invalid: expecting a string file path";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             throw new InvalidArgumentException($msg);
         }
         $values = [
@@ -535,10 +544,10 @@ class Remote extends FileDriver {
             $this->_cache->setFromFile($cacheKey, $dstFile);
             return true;
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }
@@ -564,22 +573,22 @@ class Remote extends FileDriver {
         elseif(! strlen($srcFile = trim($localFile))) {
             $var = Types::getVartype($$msg, 32);
             $msg = "'{$msg}' parameter '{$var}' is invalid: expecting a string file path";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             throw new InvalidArgumentException($msg);
         }
         if(! isset($msg) && ! strlen($dstFile = trim($remoteFile))) {
             $var = Types::getVartype($$msg, 32);
             $msg = "'{$msg}' parameter '{$var}' is invalid: expecting a string file path";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             throw new InvalidArgumentException($msg);
         }
         try {
             return $this->_client->upload($srcFile, $dstFile, $resume, $mode);
         } catch (FtpClientException $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         } catch (Throwable $exc) {
-            $this->saveError($exc->getMessage());
+            $this->saveMessage($exc->getMessage());
             return false;
         }
     }

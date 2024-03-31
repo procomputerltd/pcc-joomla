@@ -2,6 +2,7 @@
 namespace Procomputer\Joomla;
 
 use Procomputer\Pcclib\Types;
+use stdClass;
 
 class Package extends PackageCommon {
 
@@ -13,30 +14,30 @@ class Package extends PackageCommon {
     
     /**
      * Creates a package from an existing joomla installation.
-     * @return string|boolean Returns the path of the temporary file holding the ZIP archive.
+     * @return boolean Returns true if no errors encountered else false.
      */
-    public function import(array $options = null) {
+    public function import(array $options = null) : bool {
         $this->setPackageOptions($options);
-        $manifestElements = [
-            'author' => true,
-            'authorEmail' => true,
-            'authorUrl' => true,
-            'copyright' => true,
-            'creationDate' => true,
-            'description' => true,
-            'files' => true,
-            'license' => true,
-            'name' => true,
-            'packagename' => true,
-            'packager' => false,
-            'packagerurl' => false,
-            'scriptfile' => false,
-            'updateservers' => false,
-            'url' => false,
-            'version' => true,
+        $requiredElements = [
+            'author',
+            'authorEmail',
+            'authorUrl',
+            'copyright',
+            'creationDate',
+            'files',
+            'license',
+            'name',
+            'packagename',
+            'version'
+            // 'description',
+            // 'packager'
+            // 'packagerurl'
+            // 'scriptfile'
+            // 'updateservers'
+            // 'url'
             ];
         
-        $missing = $this->checkRequiredElementsExist($manifestElements);
+        $missing = $this->checkRequiredElementsExist($requiredElements);
         if(true !== $missing) {
             $this->_packageMessage("required package element(s) missing: " . implode(", ", $missing));
             return false;
@@ -74,7 +75,7 @@ class Package extends PackageCommon {
             $node = $this->manifest->{$section};
             if(null === $node) {
                 $msg = "WARNING: required manifest XML '{$section}' is empty";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 if($required) {
                     return false;
                 }
@@ -124,7 +125,7 @@ class Package extends PackageCommon {
                 return false;
             }
             if(! $archiver->addFile($archive, 'packages/' . $package->extensionName . '.zip')) {
-                $this->saveError($archiver->getErrors());
+                $this->saveMessage($archiver->getMessages());
                 $archiver->close();
                 return false;
             }
@@ -138,22 +139,13 @@ class Package extends PackageCommon {
         }
         
         return true;
-        
-        /*
-        $filename = $archiver->getFilename();
-        if(! $archiver->close()) {
-            $this->saveError($archiver->getErrors());
-            return false;
-        }
-        return $filename;
-         */
     }
     
     /**
-     * 
+     * Process the 'files' manifest section.
      * @return boolean
      */
-    protected function _processFiles() {
+    protected function _processFiles(stdClass $node, string $tag = 'Manifest'): bool {
         $valid = true;
         //<scriptfile>script.php</>
         //<files folder="packages">	   
@@ -192,10 +184,10 @@ class Package extends PackageCommon {
     }
     
     /**
-     * 
+     * Process a file in the 'files' manifest section.
      * @return boolean
      */
-    protected function _processFile($file, string $tag = 'Manifest') {
+    protected function _processFile($file, string $tag = 'Manifest'): bool {
         
         // <file type="module" id="pcceventslist" client="site">mod_pcceventslist.zip</file>
         
@@ -236,7 +228,7 @@ class Package extends PackageCommon {
      * @param string  $destPath
      * @return boolean
      */
-    public function copy($destPath) {
+    public function copy(string $destPath): bool {
         if(false === parent::copy($destPath)) {
             return false;
         }
@@ -245,5 +237,6 @@ class Package extends PackageCommon {
                 return false;
             }
         }
+        return true;
     }
 }

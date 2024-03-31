@@ -3,9 +3,11 @@ namespace Procomputer\Joomla\Model;
 
 use Procomputer\Pcclib\Types;
 use Procomputer\Pcclib\FileSystem;
-use Procomputer\Joomla\Traits;
+use Procomputer\Joomla\Traits\Files;
+use Procomputer\Pcclib\Messages\Messages;
 use Procomputer\Joomla\Model\Progress;
 use RuntimeException;
+use ArrayObject;
 use Throwable;
 use ZipArchive;
 use Closure;
@@ -13,7 +15,8 @@ use stdClass;
 
 class Archiver {
 
-    use Traits\Files;
+    use Files;
+    use Messages;
     
     /**
      * ZipArchive object.
@@ -62,7 +65,7 @@ class Archiver {
      * @param FileDriver $fileDriver Archiver needs the file driver to download remote/local files.
      * @param array      $options    (optional) Options. 
      */
-    public function __construct($fileDriver, array $options = null) {
+    public function __construct($fileDriver, array $options = []) {
         $this->_fileDriver = $fileDriver;
         $this->_archiverOptions = $options;
         $this->_progress = new Progress();
@@ -91,11 +94,11 @@ class Archiver {
      * @param array  $options    (optional) Other options.
      * @return ZipArchive|boolean
      */
-    public function open($file = null, $zipOptions = ZipArchive::CREATE | ZipArchive::OVERWRITE, array $options = null) {
+    public function open(string $file = '', int $zipOptions = ZipArchive::CREATE | ZipArchive::OVERWRITE, array $options = null): ZipArchive|bool {
         if(null !== $this->_zip) {
             $this->close();
         }
-        if(null === $file) {
+        if(Types::isBlank($file)) {
             $zipFile = $this->createTempFile();
             if(false === $zipFile) {
                 return false;
@@ -112,7 +115,7 @@ class Archiver {
         $res = $zip->open($zipFile, $zipOptions);
         if($res !== true) {
             $msg = $this->_getZipArchiveErrorMessage($zip, $res);
-            $this->saveError("Cannot open ZIP archive: {$msg}");
+            $this->saveMessage("Cannot open ZIP archive: {$msg}");
             return false;
         }
         $this->_zip = $zip;
@@ -135,7 +138,7 @@ class Archiver {
 //                $zipFile = $this->getZipFile();
 //                if(! FileSystem::copyFile($zipFile, $tempFile, true)) {
 //                    $msg = "cannot copy zip file {$zipFile} to temporary file {$tempFile}";
-//                    $this->saveError($msg);
+//                    $this->saveMessage($msg);
 //                    $success = false;
 //                }
 //                else {
@@ -145,7 +148,7 @@ class Archiver {
 //            }
             if(! $this->_zip->close()) {
                 $msg = $this->_getZipArchiveErrorMessage($this->_zip);
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 $success = false;
             }
             return $success;
@@ -167,7 +170,7 @@ class Archiver {
         if(! $fileCount) {
             $var = Types::getVartype($fileList);
             $errMsg = "WARNING: invalid list parameter '{$var}' is empty in " . __FUNCTION__ . "() line " . __LINE__;
-            $this->saveError($errMsg);
+            $this->saveMessage($errMsg);
         }
         $zip = $this->_getZipArchive();
         if(false === $zip) {
@@ -178,7 +181,7 @@ class Archiver {
             if(! is_array($values) || 2 !== count($values)) {
                 $var = Types::getVartype($fileList);
                 $errMsg = "list parameter '{$var}' must be list of 2-element arrays of file";
-                $this->saveError($errMsg);
+                $this->saveMessage($errMsg);
                 $success = false;
                 break;
             }
@@ -195,7 +198,7 @@ class Archiver {
                 }
                 if($zip->status) {
                     $msg = $this->_getZipArchiveErrorMessage($zip);
-                    $this->saveError("Cannot add file to ZIP archive: {$msg}");
+                    $this->saveMessage("Cannot add file to ZIP archive: {$msg}");
                     $success = false;
                     break;
                 }
@@ -237,11 +240,11 @@ class Archiver {
                 if($res) {
                     // It's a zip error.
                     $msg = $this->_getZipArchiveErrorMessage($zip);
-                    $this->saveError("Cannot add file to ZIP archive: {$msg}");
+                    $this->saveMessage("Cannot add file to ZIP archive: {$msg}");
                     return false;
                 }
             } catch (Throwable $exc) {
-                $this->saveError($exc->getMessage());
+                $this->saveMessage($exc->getMessage());
                 return false;
             }
             return true;
@@ -263,7 +266,7 @@ class Archiver {
         foreach($fileList as $values) {
             $filePath = is_array($values) ? reset($values) : $values;
             if($driver->isDirectory($filePath)) {
-                $files = new \ArrayObject; ;
+                $files = new ArrayObject; ;
                 $driver->iterateFiles($filePath, function($isDir, $file, $fileInfo) use($filePath, $fileCount, $files) {
                     // Skip directories (they would be added automatically)
                     if($isDir) {
@@ -317,8 +320,8 @@ class Archiver {
                 }
                 $contents = $this->_fileDriver->getFileContents($filePath);
                 if(false === $contents) {
-                    $errors = $this->_fileDriver->getErrors();
-                    $this->saveError($errors);
+                    $errors = $this->_fileDriver->getMessages();
+                    $this->saveMessage($errors);
                     return false;
                 }
                 $e = set_error_handler(
@@ -334,8 +337,8 @@ class Archiver {
                     set_error_handler($e);
                 }
 //                if(false === $this->_fileDriver->download($filePath, $tempFile)) {
-//                    $errors = $this->_fileDriver->getErrors();
-//                    $this->saveError($errors);
+//                    $errors = $this->_fileDriver->getMessages();
+//                    $this->saveMessage($errors);
 //                    return false;
 //                }
                 $return = (false === $zip->addFile($tempFile, $entryName, 0, 0, ZipArchive::FL_ENC_GUESS)) ? $zip->status : 0;
@@ -371,7 +374,7 @@ class Archiver {
         // Add current file to archive
         if(! $this->_zip->addFile($filePath, $entryName)) {
             $msg = $this->_getZipArchiveErrorMessage($this->_zip);
-            $this->saveError("Cannot add file to ZIP archive: {$msg}");
+            $this->saveMessage("Cannot add file to ZIP archive: {$msg}");
         }
         return false;
     }
@@ -455,13 +458,13 @@ class Archiver {
         $file = $filesystem->createTempFile($path, $prefix, $keep);
         // $file = $this->callFuncAndSavePhpError(function()use($prefix, $path){return tempnam($path, $prefix);});
         if(false === $file || ! file_exists($file) || ! is_file($file)) {
-            if($filesystem->getErrorCount()) {
-                $errorMsg = ': ' . implode(": ", $filesystem->getErrors());
+            if($filesystem->getMessageCount()) {
+                $errorMsg = ': ' . implode(": ", $filesystem->getMessages('all'));
             }
             else {
                 $errorMsg = '';
             }
-            $this->saveError("Cannot create temporary file" . $errorMsg);
+            $this->saveMessage("Cannot create temporary file" . $errorMsg);
             return false;
         }
         return $file;
@@ -477,44 +480,5 @@ class Archiver {
             $this->_callback = (is_object($option) && is_callable($option)) ? $option : false;
         }
         return $this->_callback;
-    }
-    
-    /**
-     *
-     * @param array|string $messages Error messages to save.
-     * @return self
-     */
-    public function saveError($messages) {
-        if(is_array($messages)) {
-            if(empty($messages)) {
-                return $messages;
-            }
-        }
-        else {
-            $messages = trim((string)$messages);
-            if(empty($messages)) {
-                $messages = __FUNCTION__ . "() called with empty parameter";
-            }
-            $messages = [$messages];
-        }
-        $this->_errors = array_merge($this->_errors, array_values($messages));
-        return $this;
-    }
-
-    /**
-     * Returns saved errors.
-     * @return array
-     */
-    public function getErrors() {
-        return $this->_errors;
-    }
-
-    /**
-     * Clears errors.
-     * @return UtilitiesCommon
-     */
-    public function clearErrors() {
-        $this->_errors = [];
-        return $this;
     }
 }

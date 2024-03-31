@@ -2,6 +2,7 @@
 namespace Procomputer\Joomla;
 
 use Procomputer\Pcclib\Types;
+use stdClass;
 
 class PackageComponent extends PackageCommon {
     
@@ -22,7 +23,7 @@ class PackageComponent extends PackageCommon {
      * @param iterable $options (optional) Options
      * @return boolean
      */
-    public function import(array $options = null) {
+    public function import(array $options = []): bool {
         $this->setPackageOptions($options);
         $this->manifest = $this->_extension->getManifest(); 
         $this->manifestFile = $this->manifest->getManifestFile(); 
@@ -36,12 +37,12 @@ class PackageComponent extends PackageCommon {
             'copyright',
             'license',
             'version',
-            'description',
             'files',
             'administration',
             'media',
-            'languages',
             // Optional:
+            // description
+            // languages
             // scriptfile
             // install
             // uninstall
@@ -83,7 +84,7 @@ class PackageComponent extends PackageCommon {
             $node = $this->manifest->getNode($section);
             if(null === $node) {
                 $msg = "WARNING: required manifest XML '{$section}' is empty";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 if($required) {
                     return false;
                 }
@@ -177,9 +178,10 @@ class PackageComponent extends PackageCommon {
         </files>
     */        
     /**
-     * @param \stdClass $node
+     * @param stdClass $node
+     * @return bool
      */
-    protected function _processSectionAdministration($node) {
+    protected function _processSectionAdministration(stdClass $node): bool {
         $tag = 'administration';
         $files = $node->files ?? null;
         if(null === $files) {
@@ -192,9 +194,7 @@ class PackageComponent extends PackageCommon {
         
         $languages = $node->languages ?? null;
         if(null === $languages) {
-            // 'pccoptionselector.xml' manifest file error: 'files' is missing";
-            // In XML package file 'mod_pccevent.xml': 'files' section is missing")
-            $this->_packageMessage("WARNING: {$tag} 'languages' section is missing.");
+            $this->_packageMessage("WARNING: {$tag} 'languages' section is missing.", self::NAMESPACE_WARNING);
         }
         elseif(! $this->_processSectionLanguages($languages, 'admin')) {
             return false;
@@ -205,9 +205,13 @@ class PackageComponent extends PackageCommon {
     /**
      * @param string $filename
      */
-    protected function _processSectionScriptfile($filename) {
+    protected function _processSectionScriptfile(string $filename): bool {
         // C:\inetpub\joomlapcc\administrator\components\com_pccevents\script.php
         $sourceFile = $this->joinPath(dirname($this->manifestFile), $filename);
+        if(! $this->_fileDriver->fileExists($sourceFile)) {
+            $this->_packageMessage("The script file specified in 'scriptfile' section is missing: {$filename}");
+            return false;    
+        }
         $this->addFile($sourceFile, $filename);
         return true;
     }

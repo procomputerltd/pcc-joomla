@@ -2,6 +2,7 @@
 namespace Procomputer\Joomla;
 
 use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\Messages\Messages;
 
 /*  <name>PCC Option Selector Package</name>
     <packagename>pccoptionselector</packagename>
@@ -25,7 +26,32 @@ use Procomputer\Pcclib\Types;
 
 class Packager {
 
-    use Traits\Messages;
+    /**
+     * Default messages namespace
+     */
+    public const NAMESPACE_DEFAULT = 'default';
+
+    /**
+     * Success messages namespace
+     */
+    public const NAMESPACE_SUCCESS = 'success';
+
+    /**
+     * Warning messages namespace
+     */
+    public const NAMESPACE_WARNING = 'warning';
+
+    /**
+     * Error messages namespace
+     */
+    public const NAMESPACE_ERROR = 'error';
+
+    /**
+     * Info messages namespace
+     */
+    public const NAMESPACE_INFO = 'info';
+    
+    use Messages;
     use Traits\Files;
     
     /**
@@ -171,14 +197,14 @@ class Packager {
      * @param string $msg The message to store.
      * @return PackageCommon
      */
-    protected function _packageMessage($msg, bool $isError = true, string $errorSource = null) {
+    protected function _packageMessage($msg, string $msgType = self::NAMESPACE_ERROR, string $errorSource = null) {
         $source = (null === $errorSource) ? null : trim($errorSource);
         if(empty($source)) {
             $source = empty($this->_extensionName) ? null : $this->_extensionName;
         }
         $source = empty($source) ? '' : " '($source)'";
         $msg = "In XML package manifest{$source}: {$msg}";
-        $isError ? $this->saveError($msg) : $this->saveMessage($msg);
+        $this->saveMessage($msg, $msgType);
         return $this;
     }
 }

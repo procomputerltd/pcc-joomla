@@ -5,17 +5,43 @@ use ZipArchive;
 
 use Procomputer\Pcclib\FileSystem;
 use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\Messages\Messages;
 
 use Procomputer\Joomla\Drivers\Files\FileDriver;
 use Procomputer\Joomla\Model\Archiver;
 use Procomputer\Joomla\Model\Progress;
-
+use stdClass, RuntimeException;
 
 class PackageCommon  {
     
-    use Traits\Messages;
+    use Messages;
     use Traits\Files;
 
+    /**
+     * Default messages namespace
+     */
+    public const NAMESPACE_DEFAULT = 'default';
+
+    /**
+     * Success messages namespace
+     */
+    public const NAMESPACE_SUCCESS = 'success';
+
+    /**
+     * Warning messages namespace
+     */
+    public const NAMESPACE_WARNING = 'warning';
+
+    /**
+     * Error messages namespace
+     */
+    public const NAMESPACE_ERROR = 'error';
+
+    /**
+     * Info messages namespace
+     */
+    public const NAMESPACE_INFO = 'info';
+    
     const MISSING_FROM_JOOMLA_INSTALL = 0x100;
     
     /**
@@ -104,18 +130,19 @@ class PackageCommon  {
     
     /**
      * Progress data.
-     * @var Procomputer\Joomla\Model\Progress
+     * @var \Procomputer\Joomla\Model\Progress
      */
     protected $_progress;
     
     /**
      * Constructor
-     * @param \Procomputer\Joomla\Installation   $installation
-     * @param \Procomputer\Joomla\Extension      $extension
+     * @param Installation $installation
+     * @param Extension    $extension
+     * @param FileDriver   $fileDriver
      */
-    public function __construct(Installation $installation, Extension $Extension, FileDriver $fileDriver) {
+    public function __construct(Installation $installation, Extension $extension, FileDriver $fileDriver) {
         $this->_installation = $installation;
-        $this->_extension = $Extension;
+        $this->_extension = $extension;
         $this->_fileDriver = $fileDriver;
         $this->_progress = new Progress();
     }
@@ -129,9 +156,10 @@ class PackageCommon  {
     }
     
     /**
-     * @param \stdClass $node
+     * Process the manifest 'files' section(s).
+     * @param stdClass $node Parent Node
      */
-    protected function _processSectionFiles($node) {
+    protected function _processSectionFiles($node): bool {
         /*
         <files folder="site">
             <filename>controller.php</filename>
@@ -172,17 +200,20 @@ class PackageCommon  {
     </languages>
     */        
     /**
-     * @param \stdClass $node
+     * Process the manifest section(s).
+     * @param stdClass $node Parent node
+     * @param string    $tag  (optional) Tag name.
+     * @return bool
      */
-    protected function _processFiles($node, string $tag = 'Manifest') {
-        // Extract 'media' elements (there may be 0 to multiple)
+    protected function _processFiles(stdClass $node, string $tag = 'Manifest'): bool {
+        // Extract 'file' elements (there may be 0 to multiple)
         $groups = $this->manifest->extractGroups($node);
         if(! count($groups)) {
             $this->_packageMessage("{$tag} section is empty");
             return false;
         }
         if(count($groups) > 1) {
-            $this->_packageMessage("multiple '{$tag}' elements", false);
+            $this->_packageMessage("multiple '{$tag}' elements", self::NAMESPACE_WARNING);
         }
         $extensionName = basename(dirname($this->manifestFile));
         $joomlaDir = $this->_installation->webRoot;
@@ -199,7 +230,7 @@ class PackageCommon  {
                 }
             }
             if(empty($data)) {
-                $this->_packageMessage("a '{$tag}' element is empty", false);
+                $this->_packageMessage("a '{$tag}' element is empty", self::NAMESPACE_WARNING);
                 continue;
             }
             $destDir = trim($attribs['folder'] ?? '');
@@ -208,7 +239,7 @@ class PackageCommon  {
             // C:\inetpub\joomlapcc\modules\mod_pccproducts\mod_pccproducts.php
             $extensionType = $this->_extension->getType() . 's';
             $sourceDir = $this->joinPath($joomlaDir, $clientDir, $extensionType, $extensionName);
-            if(! is_dir($sourceDir)) {
+            if(! $this->_fileDriver->isDirectory($sourceDir)) {
                 $this->_packageMessage("Source folder not found: {$sourceDir}");
                 $return = false;
             }
@@ -216,7 +247,7 @@ class PackageCommon  {
                 // Extract only the elemnts specified in filter and convert to array.
                 $files = $this->manifest->extractElements($data, ['filename', 'folder']) ;
                 if(empty($files)) {
-                    $this->_packageMessage("SKIPPED: {$tag} section contains no file nor folder entries.", false);
+                    $this->_packageMessage("SKIPPED: {$tag} section contains no file nor folder entries.", self::NAMESPACE_WARNING);
                     continue;
                 }
                 $this->_updateProgress(__FUNCTION__);
@@ -229,11 +260,11 @@ class PackageCommon  {
     }
     
     /**
-     * 
-     * @param \stdClass $node
+     * Process the manifest 'media' section(s).
+     * @param stdClass $node Parent node
      * @return bool Returns true if success else false.
      */
-    protected function _processSectionMedia($node) {
+    protected function _processSectionMedia($node): bool {
         /*
         <media destination="com_pccevents" folder="media">
             <filename>index.html</filename>
@@ -246,11 +277,11 @@ class PackageCommon  {
         // Extract 'media' elements (there may be 0 to multiple)
         $groups = $this->manifest->extractGroups($node);
         if(! count($groups)) {
-            $this->_packageMessage("{$tag} section is empty");
+            $this->_packageMessage("no {$tag} sections found");
             return false;
         }
         if(count($groups) > 1) {
-            $this->_packageMessage("multiple '{$tag}' elements", false);
+            $this->_packageMessage("multiple '{$tag}' elements", self::NAMESPACE_WARNING);
         }
         $extensionName = basename(dirname($this->manifestFile));
         $joomlaDir = $this->_installation->webRoot;
@@ -260,14 +291,17 @@ class PackageCommon  {
                 continue;
             }
             list($data, $attr) = $properties;
+            if(! count((array)$data)) {
+                $this->_packageMessage("'{$tag}' tag is empty", self::NAMESPACE_WARNING);
+                continue;
+            }
             $attribs = $this->manifest->filterArray($attr, ['folder', 'destination']);
             $folder = $attribs['folder']; // Usually 'media' folder.
             $destination = Types::isBlank($attribs['destination']) ? $extensionName : trim($attribs['destination']) ;
             
-            $dir = $this->joinPath($joomlaDir, $folder, $destination); 
-            $sourceDir = realpath($dir);
-            if(false === $sourceDir || ! is_dir($sourceDir)) {
-                $this->_packageMessage("Media folder not found: {$dir}");
+            $sourceDir = $this->joinPath($joomlaDir, $folder, $destination); 
+            if(false === $sourceDir || ! $this->_fileDriver->isDirectory($sourceDir)) {
+                $this->_packageMessage("Media folder attribute not found: {$sourceDir}");
                 $return = false;
             }
             
@@ -277,7 +311,7 @@ class PackageCommon  {
             $files = $this->manifest->extractElements($data, ['filename', 'folder']) ;
             if(empty($files)) {
                 $path = $folder . '/' . $destination;
-                $this->_packageMessage("SKIPPED: media section having path '{$path}' contains no file nor folder entries.", false);
+                $this->_packageMessage("SKIPPED: media section having path '{$path}' contains no file nor folder entries.", self::NAMESPACE_WARNING);
                 continue;
             }
             if(false === $this->_addFiles($files, $sourceDir, $folder, $tag)) {
@@ -304,10 +338,12 @@ class PackageCommon  {
     */
 
     /**
-     * @param \stdClass $node
-     * @return bool
+     * Process the manifest 'languages' section(s).
+     * @param stdClass $node           Parent node
+     * @param string    $defaultFolder  Default languages folder.
+     * @return bool Returns true if success else false.
      */
-    protected function _processSectionLanguages($node, string $defaultFolder) {
+    protected function _processSectionLanguages($node, string $defaultFolder): bool {
         $tag = 'languages';
         
         // Extract 'media' elements (there may be 0 to multiple)
@@ -317,12 +353,12 @@ class PackageCommon  {
             return false;
         }
         if(count($groups) > 1) {
-            $this->_packageMessage("multiple '{$tag}' elements", false);
+            $this->_packageMessage("multiple '{$tag}' elements", self::NAMESPACE_WARNING);
         }
         $return = true;
         foreach($groups as $properties) {
             if(! is_array($properties) || 2 !== count($properties)) {
-                $this->_packageMessage("an empty node encountered in '{$tag}' elements", false);
+                $this->_packageMessage("an empty node encountered in '{$tag}' elements", self::NAMESPACE_WARNING);
                 continue;
             }
             list($data, $attribs) = $properties;
@@ -341,21 +377,21 @@ class PackageCommon  {
             default:
                 $var = Types::getVartype($langFolder);
                 $msg = "Unsupported language folder attribute '{$var}': expecting 'admin' or 'site'";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 continue 2;
             }
             $files = $this->manifest->extractElements($data, ['language']);
             if(empty($files)) {
                 $var = Types::getVartype($langFolder);
                 $msg = "WARNING: No 'language' tags found in '{$tag}' element for folder '{$var}'";
-                $this->saveError($msg);
+                $this->saveMessage($msg);
                 continue;
             }
             foreach($files as $node) {
                 if(empty($node)) {
                     $var = Types::getVartype($langFolder);
                     $msg = "WARNING: a 'language' element in folder '{$langFolder}' is empty";
-                    $this->saveError($msg);
+                    $this->saveMessage($msg);
                     continue;
                 }
                 $list = $this->manifest->extractGroups($node);
@@ -378,7 +414,7 @@ class PackageCommon  {
      * @param string $tag
      * @return bool Return true if success else false.
      */
-    protected function _addFiles(array $fileList, string $sourceFolder, string $destFolder, string $tag = 'Manifest') {
+    protected function _addFiles(array $fileList, string $sourceFolder, string $destFolder, string $tag = 'Manifest'): bool {
         $return = true;
         foreach($fileList as $type => $files) {
             if(is_object($files)) {
@@ -403,14 +439,14 @@ class PackageCommon  {
                     $error = false;
                     $sourceFile = $this->joinPath($sourceFolder, $file);
                     if('folder' === $type) {
-                        if(! is_dir($sourceFile)) {
+                        if(! $this->_fileDriver->isDirectory($sourceFile)) {
                             $return = false;
                             $error = true;
                         }
                     }
                     else {
-                        $realpath = realpath($sourceFile);
-                        if(! is_file($realpath)) {
+                        $realpath = $this->_fileDriver->getRealpath($sourceFile);
+                        if(! $realpath) {
                             $return = false;
                             $error = true;
                         }
@@ -435,11 +471,11 @@ class PackageCommon  {
      * @param type $sourceFolder
      * @return boolean
      */
-    protected function _addLanguageFile($node, $langFolder, $sourceFolder) {
+    protected function _addLanguageFile($node, $langFolder, $sourceFolder): bool {
         $file = $node->_value ?? null;
         if(Types::isBlank($file)) {
             $msg = "Language file '_value' property empty in {$langFolder} section";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         $pkgFile = $this->joinPath($langFolder, $file);
@@ -448,7 +484,7 @@ class PackageCommon  {
         $locale = trim($nodeAttribs['tag']);
         if(empty($locale)) {
             $msg = "WARNING: Missing 'tag' language attribute";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             $locale = $this->_resolveLocale($file, 'en-GB');
         }
         // C:\inetpub\joomlapcc\administrator\language\en-GB\en-GB.com_pccevents.ini
@@ -458,13 +494,15 @@ class PackageCommon  {
         if(false === $source || ! $this->_fileDriver->fileExists($source)) {
             $var = Types::getVartype(basename($source));
             $msg = "Language file not found for '{$var}': {$pkgFile}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         
         $this->_updateProgress(__FUNCTION__);
 
-        return $this->addFile($source, $pkgFile);
+        $this->addFile($source, $pkgFile);
+        
+        return true;
     }
     
     
@@ -472,9 +510,9 @@ class PackageCommon  {
      * 
      * @param type $groups
      * @param array $keys
-     * @return bool|string
+     * @return array|bool
      */
-    protected function _processSections($groups, array $keys) {        
+    protected function _processSections($groups, array $keys): array|bool {        
         if(null === $groups) {
             return false;
         }
@@ -520,7 +558,7 @@ class PackageCommon  {
      *      'install'   => array,<br>
      *      'uninstall' => array
      */
-    protected function _exportTablesAndData(array $options = null) {
+    protected function _exportTablesAndData(array $options = []): array|bool {
         $dbAdapter = $this->_installation->getDbAdapter();
         if(! is_object($dbAdapter)) {
             $msg = "WARNING: Cannot import data tables as no database adapter is specified in the Joomla Installtion object." 
@@ -587,7 +625,7 @@ class PackageCommon  {
     }
 
     /**
-     * @param \stdClass $node
+     * @param stdClass $node
      * @param string    $label
      * @return array|boolean Return array of SQL [file=>sql] arrays:<br>
      *      'drop' => [uninstallFile => dropTables],<br>
@@ -595,14 +633,14 @@ class PackageCommon  {
      *      'data' => [dataFile => sampleData]
      * 
      */
-    protected function _getDbTablesDropCreateInsert($node, $label) {
+    protected function _getDbTablesDropCreateInsert(stdClass $node, string $label): array|bool {
         // 
         $obj = isset($node->file) ? $node->file : $node;
         $attr = $this->manifest->extractAttributes($obj);
         $file = isset($obj->_value) ? $obj->_value : null;
         if(empty($file)) {
             $msg = "The {$label} file specified in the manifest missing or the data is corrupt";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         $type = $this->_extension->getType();
@@ -611,7 +649,7 @@ class PackageCommon  {
 
         if(! $this->_fileDriver->fileExists($path)) {
             $msg = "The database installation file specified in the manifest is not found in the extension: '{$path}'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
 
@@ -627,7 +665,7 @@ class PackageCommon  {
         }
         if(! is_array($dbTableNames) || empty($dbTableNames)) {
             $msg = "WARNING: database table install file has no CREATE TABLE statements: '{$file}'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return true;
         }
         
@@ -635,7 +673,7 @@ class PackageCommon  {
         $exporter = new DbTableExporter();
         $sqlArray = $exporter->export($installation, $dbTableNames);
         if(false === $sqlArray) {
-            $this->saveError($exporter->getErrors());
+            $this->saveMessage($exporter->getMessages());
             return false;
         }
 
@@ -663,16 +701,17 @@ class PackageCommon  {
     /**
      * Writes CREATE TABLE statements and INSERT INTO statements into files in the Joomla! 
      * extension sql folder
-     * 
      * @param array $filesAndData 3-element array (see: _exportTablesAndData() above)
-     *   [
-     *     'file'   => '(full path of install file that initializes the database, creates tables etc.)'
-     *     'create' => [array of CREATE TABLE statements], 
-     *     'insert' => [array of INSERT INTO statements], 
-     *   ]
+     * @return bool
      */
-    public function writeFilesAndData(array $filesAndData) {
-        
+    public function writeFilesAndData(array $filesAndData): bool {
+        /*
+            [
+              'file'   => '(full path of install file that initializes the database, creates tables etc.)'
+              'create' => [array of CREATE TABLE statements], 
+              'insert' => [array of INSERT INTO statements], 
+            ]
+         */
         foreach($filesAndData as $file => $data) {
             if(empty($data)) {
                 // Create empty file.
@@ -682,10 +721,10 @@ class PackageCommon  {
                 try {
 //                    if(! FileSystem::filePutContents($data, $file, true)) {
 //                        $msg = "Method FileSystem::filePutContents() returned an empty return value.";
-//                        throw new \RuntimeException($msg);
+//                        throw new RuntimeException($msg);
 //                    }
                 } catch (\Throwable $ex) {
-                    $this->saveError("Cannot write SQL data to file: " . $ex->getMessage());
+                    $this->saveMessage("Cannot write SQL data to file: " . $ex->getMessage());
                     return false;
                 }
             }
@@ -701,11 +740,11 @@ class PackageCommon  {
      * @return array|string|boolean  Returns an array of database tables or '__no_data__' if '__no_data__' 
      *                               found in the file or false on error.
      */
-    protected function _parseCreateTableStatements($file) {
+    protected function _parseCreateTableStatements(string $file): array|string|bool {
         // C:\inetpub\joomlapcc\administrator\components\com_pccoptionselector
         if(! $this->_fileDriver->fileExists($file)) {
             $msg = "File not found: {$file}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false; // Not found.
         }
 
@@ -721,12 +760,12 @@ class PackageCommon  {
             && ! preg_match_all('(?:CREATE[ \\t]+TABLE[ \\t]*|CREATE[ \\t]+TABLE[ \\t]+IF[ \\t]+NOT[ \\t]+EXISTS[ \\t]*)([^ \\t`\\(]+)/s', $contents, $m)
             ) {
             $msg = "No CREATE TABLES statements found in file: {$file}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false; // Not found.
         }
         if(empty($m[1])) {
             $msg = "WARNING: cannot extract database table name in file: '{$file}'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false; // Not found.
         }
         return $m[1];
@@ -740,11 +779,11 @@ class PackageCommon  {
      * @return array|string|boolean  Returns an array of database tables or '__no_data__' if '__no_data__' 
      *                               found in the file or false on error.
      */
-    protected function _parseDropTableStatements($file) {
+    protected function _parseDropTableStatements($file): array|string|bool {
         // C:\inetpub\joomlapcc\administrator\components\com_pccoptionselector
         if(! $this->_fileDriver->fileExists($file)) {
             $msg = "File not found: {$file}";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false; // Not found.
         }
 
@@ -761,12 +800,12 @@ class PackageCommon  {
             && ! preg_match_all('(?:DROP[ \\t]+TABLE[ \\t]*|DROP[ \\t]+TABLE[ \\t]+IF[ \\t]+EXISTS[ \\t]*)([^ \\t`\\(]+)/s', $contents, $m)
             ) {
             // $msg = "No DROP TABLES statements found in file: {$file}";
-            // $this->saveError($msg);
+            // $this->saveMessage($msg);
             return []; // Not found.
         }
         if(empty($m[1])) {
             $msg = "WARNING: cannot extract database table name in file: '{$file}'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return []; // Not found.
         }
         return $m[1];
@@ -781,11 +820,8 @@ class PackageCommon  {
      * 
      * @return Archiver|boolean Returns the archive object or FALSE on error.
      */
-    public function archive($file = null, $zipOptions = null, array $options = null) {
-        if(! is_array($options)) {
-            $options = [];
-        }
-        $options['callback'] = function($properties) {
+    public function archive(string $file = '', int $zipOptions = 0, array $options = []): bool {
+        $options['callback'] = function() {
             $this->_updateProgress(__FUNCTION__);
             return true;
         };
@@ -795,7 +831,7 @@ class PackageCommon  {
         }
         $fileList = $this->getFiles();
         if(! $archiver->addFromFileList($fileList)) {
-            $this->saveError($archiver->getErrors());
+            $this->saveMessage($archiver->getMessages());
             return false;
         }
         return true;
@@ -805,8 +841,9 @@ class PackageCommon  {
      * Extracts the locale from the file basename.
      * @param string $file
      * @param string $defaultLocale
+     * @return string
      */
-    protected function _resolveLocale($file, $defaultLocale = 'en-GB') {
+    protected function _resolveLocale(string $file, string $defaultLocale = 'en-GB'): string {
         // language/en-GB.com_pccoptionselector.ini
         $d = dirname($file);
         $base = ('.' === $d || '..' === $d) ? $file : basename($file);
@@ -825,7 +862,7 @@ class PackageCommon  {
      * 
      * @return Archiver|boolean
      */
-    public function getArchiver($file = null, $zipOptions = ZipArchive::CREATE | ZipArchive::OVERWRITE, array $options = null) {
+    public function getArchiver(string $file = '', int $zipOptions = ZipArchive::CREATE | ZipArchive::OVERWRITE, array $options = []): Archiver|bool {
         if(null === $this->_archiver) {
             $archiver = new Archiver($this->_installation->getFileDriver(), $options);
             unset($options['callback']);
@@ -850,7 +887,7 @@ class PackageCommon  {
      *
      * @return array
      */
-    public function getFiles() {
+    public function getFiles(): array {
         return $this->_files ;
     }
 
@@ -862,7 +899,7 @@ class PackageCommon  {
      *
      * @return self|\Procomputer\Joomla\PackageCommon
      */
-    public function addFile($source, $dest) {
+    public function addFile(string $source, string $dest) {
         // WARNING: Overwrites exising source, dest!
         $this->_files[md5($source . '_' . $dest)] = [$source, $dest];
         return $this ;
@@ -926,12 +963,12 @@ class PackageCommon  {
      * Inspect the prepared packages for further processing.
      * @return boolean
      */
-    protected function _checkPackage() {
+    protected function _checkPackage(): bool {
         $valid = true;
         foreach($this->getFiles() as $pair) {
             list($sourceFile, $destFile) = $pair;
             if(! file_exists($sourceFile)) {
-                $this->saveError("Source file not found: \n{$sourceFile}");
+                $this->saveMessage("Source file not found: \n{$sourceFile}");
                 $valid = false;
             }
         }
@@ -942,9 +979,9 @@ class PackageCommon  {
      * Resolves the component source XML manifest file.
      * @param \SimpleXMLElement $node
      * @param type $errorSource
-     * @return boolean
+     * @return string|boolean
      */
-    protected function _resolveSource(\SimpleXMLElement $node) {
+    protected function _resolveSource(\SimpleXMLElement $node): string|bool {
         
         $joomlaDir = $this->_installation->webRoot;
         $errorSource = basename($joomlaDir);
@@ -953,7 +990,7 @@ class PackageCommon  {
         // <file type="component" id="osmembership">com_osmembership.zip</file>
         $attribs = $this->manifest->extractAttributes($node, ['type' => '', 'client' => '', 'id' => '']);
         if(empty($attribs['type'])) {
-            $this->_packageMessage("missing 'type' attribute: {$node->asXML()}", true, $errorSource);
+            $this->_packageMessage("missing 'type' attribute: {$node->asXML()}", self::NAMESPACE_ERROR, $errorSource);
             return false;
         }
         $file = (string)$node;
@@ -969,16 +1006,16 @@ class PackageCommon  {
             $subFolder = $attribs['type'] . 's';
             break;
         default:
-            $this->_packageMessage("unsupported or misspelled 'type' attribute '{$attribs['type']}': \n{$node->asXML()}", true, $errorSource);
+            $this->_packageMessage("unsupported or misspelled 'type' attribute '{$attribs['type']}': \n{$node->asXML()}", self::NAMESPACE_ERROR, $errorSource);
             return false;
         }
         $sourceDir = $this->joinPath($joomlaDir, $folder, $subFolder, $extensionName);
         $sourceFile = $this->joinPath($sourceDir, $filename . '.xml');
-        if(file_exists($sourceFile) && is_file($sourceFile)) {
+        if($this->_fileExists($sourceFile)) {
             return $sourceFile;
         }
         $this->_packageMessage("{$attribs['type']} manifest file not found in Joomla installation '{$extensionName}':" 
-            . " \n{$sourceFile} \n{$node->asXML()}", true, $errorSource);
+            . " \n{$sourceFile} \n{$node->asXML()}", self::NAMESPACE_ERROR, $errorSource);
         $this->_lastError = self::MISSING_FROM_JOOMLA_INSTALL;    
         return false;
     }
@@ -989,11 +1026,11 @@ class PackageCommon  {
      * @param string $prefix  Prefix to prepend.
      * @return string
      */
-    protected function _addNamePrefix($name, $prefix = null) {
+    protected function _addNamePrefix(string $name, string $prefix = ''): string {
         if(! is_string($name) || ! strlen(trim($name))) {
             return $name;
         }
-        $pfx = (null === $prefix) ? null : trim((string)$prefix);
+        $pfx = (null === $prefix) ? null : trim($prefix);
         if(empty($pfx)) {
             $pfx = $this->_namePrefix;
         }
@@ -1007,8 +1044,8 @@ class PackageCommon  {
      * @param string $prefix  Prefix to remove.
      * @return string
      */
-    protected function _removeNamePrefix($name, $prefix = null) {
-        $pfx = (null === $prefix) ? null : trim((string)$prefix);
+    protected function _removeNamePrefix(string $name, string $prefix = ''): string {
+        $pfx = (null === $prefix) ? null : trim($prefix);
         if(empty($pfx)) {
             $pfx = $this->_namePrefix;
         }
@@ -1027,7 +1064,7 @@ class PackageCommon  {
      * @param boolean $keep    Optional flag to preserve the temporary file else it's destroyed on PHP script close.
      * @return string|boolean
      */
-    public function createTempFile($prefix = 'pcc', $path = null, $keep = false) {
+    public function createTempFile(string $prefix = 'pcc', string $path = null, bool $keep = false): string|bool {
         if(null === $path) {
             $path = sys_get_temp_dir();
         }
@@ -1035,13 +1072,13 @@ class PackageCommon  {
         $file = $filesystem->createTempFile($path, $prefix, $keep);
         // $file = $this->callFuncAndSavePhpError(function()use($prefix, $path){return tempnam($path, $prefix);});
         if(false === $file || ! file_exists($file) || ! is_file($file)) {
-            if($filesystem->getErrorCount()) {
-                $errorMsg = ': ' . implode(": ",$filesystem->getErrors());
+            if($filesystem->getMessageCount()) {
+                $errorMsg = ': ' . implode(": ", $filesystem->getMessages('all'));
             }
             else {
                 $errorMsg = '';
             }
-            $this->saveError("Cannot create temporary file" . $errorMsg);
+            $this->saveMessage("Cannot create temporary file" . $errorMsg);
             return false;
         }
         return $file;
@@ -1095,9 +1132,9 @@ class PackageCommon  {
     /**
      * Saves a package assembly error.
      * @param string $message The message to store.
-     * @return PackageCommon
+     * @return self
      */
-    protected function _packageMessage($message, bool $isError = true, string $errorSource = null) {
+    protected function _packageMessage(string $message, string $msgType = self::NAMESPACE_ERROR, string $errorSource = null) {
         $source = (null === $errorSource) ? null : trim($errorSource);
         if(empty($source)) {
             $source = empty($this->_extensionName) ? null : $this->_extensionName;
@@ -1108,8 +1145,16 @@ class PackageCommon  {
             $file = ' file ' . $file;
         }
         $msg = "In XML package manifest{$file}{$source}: {$message}";
-        $this->saveMessage($msg, $isError);
+        $this->saveMessage($msg, $msgType);
         return $this;
     }
-    
+ 
+    /**
+     * Determines that a file eixsts.
+     * @param string $file
+     * @return bool
+     */
+    protected function _fileExists(string $file): bool {
+        return (file_exists($file) && is_file($file));
+    }
 }

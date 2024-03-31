@@ -14,12 +14,14 @@
 */
 namespace Procomputer\Joomla;
 
-use Procomputer\Pcclib\Types,
-    Procomputer\Pcclib\FileSystem;
+use Procomputer\Joomla\Drivers\Files\FileDriver;
+use Procomputer\Pcclib\Messages\Messages;
+use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\FileSystem;
 
 class Installation {
 
-    use Traits\Messages;
+    use Messages;
     use Traits\XmlJson;
     
     const FILTER_JOOMLA = 1;
@@ -83,12 +85,13 @@ class Installation {
     /**
      * Constructor.
      * 
-     * @param string            $name
-     * @param array|stdClass    $config
-     * @param string            $webRoot
-     * @param FileDriver        $fileDriver
+     * @param string      $name
+     * @param mixed       $config     This may be a JConfig_{hash} object parsed from Joomla configuration.php
+     * @param string      $webRoot
+     * @param FileDriver  $fileDriver
+     * @param mixed       $dbAdapter  (optional)
      */
-    public function __construct(string $name, $config, string $webRoot, $fileDriver, $dbAdapter = null) {
+    public function __construct(string $name, mixed $config, string $webRoot, FileDriver $fileDriver, mixed $dbAdapter = null) {
         $this->element = basename($webRoot);
         $this->name = $name;
         $this->config = $config;
@@ -101,9 +104,9 @@ class Installation {
      * Imports a Joomla component into an install-able ZIP file.
      * @param string $extensionName The name of the extension to import e.g. com_procomputercomponent, mod_procomputermodule
      * @param array  $options       (optional) Option. May include 'callback' => \Closure function.
-     * @return array|boolean Returns array ['contenttype', 'zipfile', 'basename']
+     * @return array|bool Returns array ['contenttype', 'zipfile', 'basename']
      */
-    public function importJoomlaComponent($extensionName, array $options = null) {
+    public function importJoomlaComponent(string $extensionName, array $options = []): array|bool {
         
         $package = $this->createPackage($extensionName);
         if(false === $package) {
@@ -113,8 +116,7 @@ class Installation {
         /** @var \Procomputer\Joomla\PackageComponent $package */
         $success = $package->import($options);
         // Add errors, warnings, messages.
-        $this->saveMessage($package->getErrors(), true);
-        $this->saveMessage($package->getMessages(), false);
+        $this->saveMessage($package->getMessages());
         if(! $success) {
             return false;
         }
@@ -123,8 +125,7 @@ class Installation {
         $archiver->close();
         $tempZipFile = $archiver->getZipFile();
         if(! $tempZipFile) {
-            $this->saveMessage($archiver->getErrors(), true);
-            $this->saveMessage($archiver->getMessages(), false);
+            $this->saveMessage($archiver->getMessages());
             return false;
         }
         
@@ -132,7 +133,7 @@ class Installation {
         if(empty($dir) || ! is_dir($dir)) {
             $var = Types::getVarType($dir);
             $msg = "PHP 'upload_tmp_dir' ini property '{$var}' is not valid. Specify a valid directory in php.ini 'upload_tmp_dir' property.";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         
@@ -154,7 +155,7 @@ class Installation {
             $success = false;
         }
         if(! $success) {
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         
@@ -168,9 +169,6 @@ class Installation {
         }
         $basename .= '.zip';
 
-        /**
-         * Save the download file data to the user state session, apply on next redirect.
-         */
         $data = [
             'contenttype' => 'application/zip',
             'zipfile' => $zipFile,
@@ -184,7 +182,7 @@ class Installation {
      * @param string|array $extensionOrName
      * @return PackageCommon
      */
-    public function createPackage($extensionOrName) {
+    public function createPackage($extensionOrName): mixed {
         /**
          * Find the Joomla! extension and return the extension data.
          */
@@ -213,7 +211,7 @@ class Installation {
      * 
      * @return Languages
      */
-    public function languages() {
+    public function languages(): Languages {
         if(null === $this->_languages) {
             $this->_languages = new Languages($this, $this->_fileDriver);        
         }
@@ -224,9 +222,9 @@ class Installation {
      * Returns the Joomla! extension having the specified name.
      * @param string|array  $spec     The extension name or array.
      * @param array         $options  (optional) Process options.
-     * @return Extension|boolean
+     * @return Extension|bool
      */
-    public function getExtension($spec, $options = null) {
+    public function getExtension(string|array $spec, array $options = []): Extension|bool {
         $extensions = $this->getExtensions($options);
         if(false === $extensions) {
             return false;
@@ -235,7 +233,7 @@ class Installation {
         if(false !== $extension) {
             return $extension;
         }
-        $this->saveError($extensions->getErrors());
+        $this->saveMessage($extensions->getMessages());
         return false;
     }
 
@@ -244,7 +242,7 @@ class Installation {
      * @param array $options (optional) Process options.
      * @return Extensions
      */
-    public function getExtensions($options = null) {
+    public function getExtensions(array $options = []): Extensions {
         // $lcOptions = $this->_extendOptions($options);
         if(null === $this->extensions) {
             $this->extensions = new Extensions($this->webRoot, $this->config, $this->_fileDriver, $this->_dbAdapter);
@@ -255,16 +253,16 @@ class Installation {
     /**
      * Returns the list of extension names for this installation.
      * @param array $options (optional) Process options.
-     * @return array
+     * @return array|bool
      */
-    public function getExtensionGroups($options = null) {
+    public function getExtensionGroups(array $options = []): array|bool {
         $extensions = $this->getExtensions($options);
         if(false === $extensions) {
             return false;
         }
         $extensionGroups = $extensions->getExtensionGroups($options);
         if(false === $extensionGroups) {
-            $this->saveError($extensions->getErrors());
+            $this->saveMessage($extensions->getMessages());
         }
         return $extensionGroups;
     }
@@ -274,7 +272,7 @@ class Installation {
      * @param array $options (optional) Process options.
      * @return array
      */
-    public function getPackages($options = null) {
+    public function getPackages(array $options = []) {
         $lcOptions = $this->_extendOptions($options);
         $lcOptions['type'] = 'package';
         return $this->getExtensions($lcOptions);
@@ -285,7 +283,7 @@ class Installation {
      * @param array $options (optional) Process options.
      * @return array
      */
-    public function getPackagesNames($options = null) {
+    public function getPackagesNames(array $options = []) {
         $lcOptions = $this->_extendOptions($options);
         $data = $this->getPackages($lcOptions);
         if(empty($lcOptions['sort'])) {
@@ -299,7 +297,7 @@ class Installation {
      * Returns the file driver.
      * @return FileDriver
      */
-    public function getFileDriver() {
+    public function getFileDriver(): FileDriver {
         return $this->_fileDriver;
     }
 
@@ -307,15 +305,18 @@ class Installation {
      * Returns the database adapter.
      * @return \Laminas\Db\Adapter\Platform\Mysql
      */
-    public function getDbAdapter() {
+    public function getDbAdapter(): mixed {
         return $this->_dbAdapter;
     }
 
     /**
      * Returns the list of extension names for this installation.
-     * @param string $sort (optional) Sort/prioritize on this string key.
+     * @param array  $data
+     * @param string $sort     (optional) Sort/prioritize on this string key.
+     * @param string $propName (optional) 
+     * @return type
      */
-    protected function _sort($data, $sort, $propName = null) {
+    protected function _sort(array $data, string $sort, string $propName = '') {
         if(Types::isBlank($sort)) {
             return $data;
         }

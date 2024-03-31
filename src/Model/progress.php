@@ -21,27 +21,27 @@ class Progress {
     protected $_count = 0;
     protected $_data = [];
     protected $_callback = null;
-            
+
+    /**
+     * 
+     * @param callable $callback
+     */
     public function __construct($callback = null) {
-        if(is_object($callback)  && is_callable($callback)) {
-            $this->_callback = $callback;
+        if(null !== $callback) {
+            $this->setCallback($callback);
         }
         $this->_time = $this->_startTime = microtime(true);
     }
     
     /**
      * 
-     * @param bool   $reset
-     * @param string $name
+     * @param callable $callback
      * @return self
      * @throws InvalidArgumentException
      */
-    public function setCallback($callback) {
-        if(is_object($callback)  && is_callable($callback)) {
-            $this->_callback = $callback;
-            return $this;
-        }
-        throw new InvalidArgumentException("Invalid '\$callback' argument: expecting a callable object.");
+    public function setCallback(callable $callback) {
+        $this->_callback = $callback;
+        return $this;
     }
     
     /**

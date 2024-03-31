@@ -15,7 +15,8 @@
 
 namespace Procomputer\Joomla;
 
-use Procomputer\Pcclib\Types;
+use Procomputer\Pcclib\Messages\Messages;
+use ArrayObject, stdClass, RuntimeException;
 
 /**
  * Describes a Joomla! Extension manifest whos source is an XML file normally
@@ -23,7 +24,7 @@ use Procomputer\Pcclib\Types;
  */
 class Manifest {
 
-    use Traits\Messages;
+    use Messages;
     use Traits\XmlJson;
 
     protected $_manifest = null;
@@ -38,7 +39,7 @@ class Manifest {
     /**
      * Constructor.
      * @param string $manifestContents (optional) An XML string associated with a Joomla! extension.
-     * @throws \RuntimeException|\InvalidArgumentException
+     * @throws RuntimeException|\InvalidArgumentException
      */
     public function __construct(string $manifestContents = null, string $xmlPath = null) {
         if(null !== $manifestContents) {
@@ -118,7 +119,7 @@ class Manifest {
      * @param string $manifestContents An XML string associated with a Joomla! extension.
      * @return boolean
      * @throws \InvalidArgumentException
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function parseManifest(string $manifestContents, string $xmlpath) {
         $this->_manifest = null;
@@ -130,9 +131,9 @@ class Manifest {
             $base = basename($xmlpath);
             $msg = "Manifest XML file {$base} cannot be loaded: {$this->lastXmlJsonError}";
             if($this->_throwException) {
-                throw new \RuntimeException($msg);
+                throw new RuntimeException($msg);
             }
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             return false;
         }
         
@@ -145,9 +146,9 @@ class Manifest {
         $extensionType = $attributes['type'];
         if(empty($extensionType)) {
             $msg = "The package XML file is missing the extension 'type' attribute: expecting a joomla extension type like 'component'";
-            $this->saveError($msg);
+            $this->saveMessage($msg);
             if($this->_throwException) {
-                throw new \RuntimeException($msg);
+                throw new RuntimeException($msg);
             }
             return false;
         }
@@ -161,9 +162,9 @@ class Manifest {
             $this->_manifest = $object;
             return true;
         }
-        $this->saveError($this->lastXmlJsonError);
+        $this->saveMessage($this->lastXmlJsonError);
         if($this->_throwException) {
-            throw new \RuntimeException($this->lastXmlJsonError);
+            throw new RuntimeException($this->lastXmlJsonError);
         }
         return false;
     }
@@ -178,7 +179,7 @@ class Manifest {
             \joomlapcc\administrator\language\en-GB\en-GB.com_pccoptionselector.ini
         */
         $manifestData = $this->getData();
-        $langFiles = new \ArrayObject([], \ArrayObject::ARRAY_AS_PROPS);
+        $langFiles = new ArrayObject([], ArrayObject::ARRAY_AS_PROPS);
         $files = [
             'admin' => $manifestData->administration->languages ?? null,
             'site' => $manifestData->languages ?? null,
@@ -260,7 +261,7 @@ class Manifest {
     /**
      * Extracts groups of nodes from a parent node. If the node contains numeric 
      * index keys (0,1,2,...) it's a multiple node object else it a single object.
-     * @param \stdClass $node
+     * @param stdClass $node
      * @return array
      */
     public function extractGroups($node) {
@@ -299,7 +300,7 @@ class Manifest {
                 $list = $node[$var];
             }
         }
-        elseif($node instanceof \stdClass) {
+        elseif($node instanceof stdClass) {
             if(isset($node->{$var})) {
                 $list = $node->{$var};
             }
